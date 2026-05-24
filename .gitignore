@@ -7,6 +7,9 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+desktop/node_modules/
+desktop/dist/
+desktop/out/
 data/sourcepilot.db
 data/sourcepilot.db-*
 data/*.log

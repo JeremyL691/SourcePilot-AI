@@ -46,9 +46,12 @@ def parse_rss_bytes(payload: bytes, fetch_full_articles: bool = False) -> list[E
             link = entry.get("link")
             body = _entry_text(entry)
             if fetch_full_articles and link:
-                article_title, article_text = fetch_webpage_text(link)
-                body = article_text or body
-                title = article_title or title
+                try:
+                    article_title, article_text = fetch_webpage_text(link)
+                    body = article_text or body
+                    title = article_title or title
+                except Exception as exc:
+                    body = body or f"Full article fetch failed, but the RSS item was preserved. Error: {exc}"
             if not title and not body:
                 continue
             docs.append(
@@ -98,4 +101,3 @@ def _parse_rss_with_elementtree(payload: bytes) -> list[ExtractedDocument]:
 
 def ingest_rss(url: str, fetch_full_articles: bool = False) -> list[ExtractedDocument]:
     return parse_rss_bytes(fetch_url_bytes(url), fetch_full_articles=fetch_full_articles)
-

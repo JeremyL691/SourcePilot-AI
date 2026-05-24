@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -9,7 +7,8 @@ from app.ingestion.pdf import ingest_pdf
 from app.ingestion.quality import store_extracted_documents
 from app.ingestion.rss import ingest_rss
 from app.ingestion.webpage import ingest_webpage
-from app.models import Document, DocumentChunk, IngestionRun, Source
+from app.models import Document, DocumentChunk, IngestionRun, Source, utc_now
+from app.services.library import cleanup_item_links
 
 
 def create_source(db: Session, source_type: str, name: str, url: str | None = None, local_path: str | None = None) -> Source:
@@ -17,11 +16,52 @@ def create_source(db: Session, source_type: str, name: str, url: str | None = No
         raise ValueError(f"{source_type} source requires a URL")
     if source_type == "pdf" and not local_path:
         raise ValueError("pdf source requires local_path")
+    if source_type not in {"rss", "webpage", "pdf", "conversation"}:
+        raise ValueError(f"Unsupported source type: {source_type}")
     source = Source(source_type=source_type, name=name, url=url, local_path=local_path)
     db.add(source)
     db.commit()
     db.refresh(source)
     return source
+
+
+def update_source(
+    db: Session,
+    source_id: int,
+    name: str | None = None,
+    url: str | None = None,
+    local_path: str | None = None,
+    status: str | None = None,
+) -> Source:
+    source = db.get(Source, source_id)
+    if not source:
+        raise ValueError(f"Source not found: {source_id}")
+    if name is not None:
+        source.name = name
+    if url is not None:
+        source.url = url
+    if local_path is not None:
+        source.local_path = local_path
+    if status is not None:
+        source.status = status
+    if source.source_type in {"rss", "webpage"} and not source.url:
+        raise ValueError(f"{source.source_type} source requires a URL")
+    if source.source_type == "pdf" and not source.local_path:
+        raise ValueError("pdf source requires local_path")
+    db.commit()
+    db.refresh(source)
+    return source
+
+
+def delete_source(db: Session, source_id: int) -> None:
+    source = db.get(Source, source_id)
+    if not source:
+        raise ValueError(f"Source not found: {source_id}")
+    document_ids = db.scalars(select(Document.id).where(Document.source_id == source_id)).all()
+    cleanup_item_links(db, "source", [source_id])
+    cleanup_item_links(db, "document", list(document_ids))
+    db.delete(source)
+    db.commit()
 
 
 def ingest_source(db: Session, source_id: int) -> IngestionRun:
@@ -36,11 +76,13 @@ def ingest_source(db: Session, source_id: int) -> IngestionRun:
 
     try:
         if source.source_type == "rss":
-            docs = ingest_rss(source.url or "")
+            docs = ingest_rss(source.url or "", fetch_full_articles=True)
         elif source.source_type == "webpage":
             docs = ingest_webpage(source.url or "")
         elif source.source_type == "pdf":
             docs = ingest_pdf(source.local_path or "")
+        elif source.source_type == "conversation":
+            docs = []
         else:
             raise ValueError(f"Unsupported source type: {source.source_type}")
 
@@ -50,7 +92,7 @@ def ingest_source(db: Session, source_id: int) -> IngestionRun:
         run.chunks_inserted = stats["chunks_inserted"]
         run.duplicates_skipped = stats["duplicates_skipped"]
         run.status = "success"
-        run.ended_at = datetime.utcnow()
+        run.ended_at = utc_now()
         source.last_ingested_at = run.ended_at
         source.status = "active"
         db.commit()
@@ -60,7 +102,7 @@ def ingest_source(db: Session, source_id: int) -> IngestionRun:
         source = db.get(Source, source_id)
         if run:
             run.status = "failed"
-            run.ended_at = datetime.utcnow()
+            run.ended_at = utc_now()
             run.error_message = str(exc)
         if source:
             source.status = "failed"
@@ -76,4 +118,3 @@ def platform_stats(db: Session) -> dict[str, int]:
         "chunks": db.scalar(select(func.count(DocumentChunk.id))) or 0,
         "ingestion_runs": db.scalar(select(func.count(IngestionRun.id))) or 0,
     }
-

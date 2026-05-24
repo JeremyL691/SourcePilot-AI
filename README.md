@@ -1,80 +1,101 @@
 # SourcePilot AI
 
-SourcePilot AI is a local-first agentic data intelligence platform for building cited answers and briefings from messy public and personal data sources. The v0.1.0 MVP ingests RSS feeds, single webpages, and local PDFs into normalized SQLite records, chunks and deduplicates text, searches indexed evidence with a deterministic local retrieval layer, and generates Markdown answers with citations.
+SourcePilot AI is a local-first personal knowledge base for people who save a lot of links, PDFs, feeds, notes, and research conversations, then forget where the useful parts went.
 
-This is intentionally more data-platform than chatbot: ingestion logs, metadata tables, duplicate tracking, source-specific connectors, repeatable tests, and evaluation scaffolding are part of the core product.
+I built it to answer a simple question: what if my reading pile could turn into a searchable, cited knowledge base on my own computer, without needing to set up a cloud database or a paid AI workflow first?
 
-## Features
+The app runs locally on Windows, stores data in SQLite, ingests webpages/RSS/PDFs, lets you organize sources with collections and tags, and answers questions using only the evidence it has indexed. If OpenAI credentials are available, it can synthesize a nicer answer. If not, it still works fully offline with local extractive answers and citations.
 
-- Add and manage `rss`, `webpage`, and `pdf` sources.
-- Run ingestion into explicit `sources`, `documents`, `document_chunks`, `ingestion_runs`, and `briefings` tables.
-- Extract text with `feedparser`, `requests` plus `BeautifulSoup`, and `pypdf`.
-- Clean, chunk, hash, and deduplicate documents and chunks.
-- Search indexed chunks with local TF-IDF style scoring that works without external services.
-- Generate extractive answers and briefings with source citations.
-- Use a FastAPI backend, OpenAPI docs, and a Streamlit dashboard.
-- Run focused pytest coverage and a lightweight retrieval evaluation script.
+## What It Does
 
-## Architecture
+- Save webpages, RSS feeds, PDFs, and conversation summaries into one local library.
+- Ingest and clean source text automatically.
+- Chunk and deduplicate documents before indexing.
+- Search by keyword with filters for source type, source, collection, and tag.
+- Ask grounded questions and get cited answers instead of unsupported guesses.
+- Save each Ask conversation as a Markdown summary back into the knowledge base.
+- Browse documents and inspect the exact chunks used for retrieval.
+- Organize sources and documents with collections and tags.
+- Run as a desktop app through Electron, with FastAPI and Streamlit started for you.
+- Stay usable without an OpenAI API key.
+
+## Current Status
+
+This is an early but usable desktop version. The goal is not to be another generic chatbot. The goal is to become a practical personal knowledge workspace: collect information, keep it organized, ask questions later, and preserve useful conversations as reusable notes.
+
+The current version includes:
+
+- FastAPI backend
+- SQLite/SQLAlchemy data model
+- Streamlit dashboard
+- Electron desktop shell
+- RSS, webpage, PDF, and saved conversation ingestion
+- Local TF-IDF style retrieval
+- Cited answers and briefings
+- Collections and tags
+- Demo source seeding
+- Windows setup/start scripts
+- Focused automated tests
+
+## Quick Start On Windows
+
+Install the two system dependencies first:
+
+- Python 3.11 or newer  
+  When installing Python, check `Add python.exe to PATH`.
+
+- Node.js LTS  
+  The default installer options are fine.
+
+Then clone or open the project folder and double-click:
 
 ```text
-RSS / Webpage / PDF
-        |
-        v
-Ingestion Connectors
-        |
-        v
-Text Extraction + Cleaning
-        |
-        v
-Chunking + Hash Deduplication
-        |
-        v
-SQLite Metadata + Chunk Store
-        |
-        v
-Local Retrieval Service
-        |
-        v
-Cited Answers + Briefings
-        |
-        v
-FastAPI API + Streamlit Dashboard
+Install-SourcePilot.bat
 ```
 
-## Repository Layout
+After setup finishes, start the app with:
 
 ```text
-sourcepilot-ai/
-  app/
-    main.py                 # FastAPI app and endpoints
-    config.py               # Local settings and data directories
-    database.py             # SQLAlchemy engine/session setup
-    models.py               # SQLite data model
-    schemas.py              # API request/response schemas
-    ingestion/              # RSS, webpage, PDF, chunking, quality checks
-    retrieval/              # Deterministic local retrieval
-    services/               # Pipeline, citation, briefing services
-    agent/                  # Agent-facing tool wrappers
-  dashboard/
-    streamlit_app.py        # Local dashboard
-  evals/
-    questions.jsonl         # Evaluation examples
-    run_eval.py             # Eval runner
-  tests/                    # Focused pytest coverage
-  data/                     # Local runtime data, ignored except placeholders
+Start-SourcePilot.bat
 ```
 
-## Requirements
+That is the recommended path for normal use. The installer creates the Python virtual environment, installs Python dependencies, installs the Electron desktop dependencies, repairs the Electron binary if needed, and runs a smoke check.
 
-- Python 3.11+
-- SQLite, included with Python
-- Optional: `OPENAI_API_KEY` in `.env` for future synthesis upgrades. v0.1.0 does not require it.
+## First Run
 
-## Setup
+Once the desktop window opens:
+
+1. Go to `Start`.
+2. Click `Load Demo Sources`, or add your own webpage/RSS/PDF.
+3. Click `Run Ingestion`.
+4. Go to `Ask`.
+5. Ask a question about the indexed material.
+
+If there are no indexed chunks yet, the app will tell you to ingest something first. If a website blocks article fetching, RSS ingestion falls back to the feed summary instead of failing the whole run.
+
+## Saving Conversations
+
+The `Ask` tab now keeps the current conversation in view. After you ask questions, SourcePilot generates a Markdown conversation summary with:
+
+- what was discussed
+- key answers
+- retrieved sources
+- the full conversation
+
+Click:
+
+```text
+Save Conversation To Knowledge Base
+```
+
+The summary is saved as a `conversation` source under `Saved Conversations`, indexed like any other document, and available in future searches.
+
+## Manual Developer Setup
+
+If you want to run it like a normal Python/Node project:
 
 ```powershell
-cd "C:\Users\Jeremy\Desktop\Vibecoding Projects\sourcepilot-ai"
+cd sourcepilot-ai
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
@@ -82,17 +103,48 @@ python -m pip install -e ".[dev]"
 copy .env.example .env
 ```
 
-If `py -3.11` is not available, use any Python 3.11+ executable.
+Optional `.env` values:
 
-## Run Locally
+```text
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4.1-mini
+SOURCEPILOT_API_PORT=8000
+SOURCEPILOT_DASHBOARD_PORT=8501
+```
 
-Start the API:
+Without `OPENAI_API_KEY` and `OPENAI_MODEL`, SourcePilot uses local extractive answers.
+
+## Running The Desktop App From Terminal
+
+```powershell
+cd sourcepilot-ai\desktop
+npm.cmd install
+npm.cmd run dev
+```
+
+The desktop app starts:
+
+- FastAPI on `127.0.0.1:8000`
+- Streamlit on `127.0.0.1:8501`
+- an Electron window pointed at the Streamlit dashboard
+
+Electron installs can be fragile on Windows, so the project includes a repair step:
+
+```powershell
+npm.cmd run ensure-electron
+```
+
+`npm.cmd run dev` runs that check automatically before launching.
+
+## Browser Mode For Development
+
+Run the backend:
 
 ```powershell
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Start the dashboard in a second terminal:
+Run the dashboard in another terminal:
 
 ```powershell
 streamlit run dashboard/streamlit_app.py
@@ -100,124 +152,114 @@ streamlit run dashboard/streamlit_app.py
 
 Open:
 
-- API docs: <http://127.0.0.1:8000/docs>
 - Dashboard: <http://localhost:8501>
+- API docs: <http://127.0.0.1:8000/docs>
 
-## Demo Script
+## Project Layout
 
-1. Start FastAPI and Streamlit.
-2. In the dashboard, add an RSS source such as `https://hnrss.org/frontpage`.
-3. Add one webpage URL, for example a documentation page or article.
-4. Add a local PDF path or upload a PDF.
-5. Select each source and click `Run Ingestion`.
-6. Check `Ingestion Runs` for document counts, chunk counts, duplicate skips, and errors.
-7. Use `Ask` with a query such as `What do indexed sources say about vector search?`.
-8. Use `Briefings` to generate a Markdown briefing for a topic.
-9. Run evaluation with `python evals/run_eval.py`.
+```text
+sourcepilot-ai/
+  app/
+    main.py                 # FastAPI app and REST endpoints
+    config.py               # Settings and local data paths
+    database.py             # SQLAlchemy engine/session setup
+    models.py               # SQLite models
+    schemas.py              # API schemas
+    ingestion/              # RSS, webpage, PDF, chunking, cleanup
+    retrieval/              # Local retrieval
+    services/               # Pipeline, library, citations, conversations
+    agent/                  # Agent-facing tool wrappers
+  dashboard/
+    streamlit_app.py        # Streamlit UI
+  desktop/
+    main.js                 # Electron process manager
+    scripts/                # Electron repair and smoke checks
+  scripts/
+    setup-windows.ps1       # Windows installer script
+    start-windows.ps1       # Windows launcher script
+  tests/
+  evals/
+  data/
+```
 
-## API Overview
+Runtime data lives locally:
+
+```text
+data/sourcepilot.db
+data/raw/
+data/processed/
+data/vector_index/
+```
+
+## API Highlights
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/` | Health check |
-| `GET` | `/stats` | Source, document, chunk, and run counts |
-| `POST` | `/sources` | Create RSS, webpage, or PDF source |
+| `GET` | `/health` | Runtime health and stats |
+| `POST` | `/demo/seed` | Add demo sources |
+| `POST` | `/sources` | Add RSS, webpage, PDF, or conversation source |
 | `GET` | `/sources` | List sources |
-| `POST` | `/sources/{source_id}/ingest` | Run ingestion for one source |
-| `GET` | `/ingestion-runs` | List ingestion logs |
-| `POST` | `/search` | Search chunks and return cited answer |
-| `POST` | `/briefings` | Generate and save cited briefing |
-| `GET` | `/briefings` | List briefing history |
-| `POST` | `/upload-pdf` | Upload a PDF and create a source |
+| `PATCH` | `/sources/{source_id}` | Update a source |
+| `DELETE` | `/sources/{source_id}` | Delete a source and its documents |
+| `POST` | `/sources/{source_id}/ingest` | Run ingestion |
+| `GET` | `/documents` | Browse documents |
+| `GET` | `/documents/{document_id}` | View document detail |
+| `GET` | `/documents/{document_id}/chunks` | View document chunks |
+| `POST` | `/search` | Ask/search with citations |
+| `POST` | `/conversations/save` | Save a Markdown conversation summary |
+| `POST` | `/briefings` | Generate a cited briefing |
+| `POST` | `/upload-pdf` | Upload a PDF |
 
-Create an RSS source:
-
-```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/sources `
-  -ContentType "application/json" `
-  -Body '{"source_type":"rss","name":"HN Front Page","url":"https://hnrss.org/frontpage"}'
-```
-
-Run ingestion:
-
-```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/sources/1/ingest
-```
-
-Search with citations:
+Example search:
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/search `
   -ContentType "application/json" `
-  -Body '{"query":"What does the indexed evidence say about AI agents?","top_k":5}'
+  -Body '{
+    "query": "What do my sources say about retrieval evaluation?",
+    "top_k": 5,
+    "source_type": "webpage",
+    "tags": ["retrieval"]
+  }'
 ```
 
-Generate a briefing:
+## How Answers Work
 
-```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/briefings `
-  -ContentType "application/json" `
-  -Body '{"topic":"AI data engineering","top_k":8}'
-```
+SourcePilot searches indexed chunks and builds answers from retrieved evidence. If it cannot find relevant evidence, it refuses instead of inventing an answer.
 
-## Data Model
-
-- `sources`: source type, name, URL or local path, status, creation time, last ingestion time.
-- `documents`: source-level extracted records with raw and cleaned text plus content hashes.
-- `document_chunks`: searchable chunks with chunk hashes, token estimates, metadata JSON, and embedding IDs.
-- `ingestion_runs`: run status, inserted document/chunk counts, duplicate counts, and error messages.
-- `briefings`: saved Markdown briefings and citation metadata.
-
-Runtime data is local:
-
-- `data/sourcepilot.db`: SQLite database.
-- `data/raw`: uploaded PDFs and raw inputs.
-- `data/processed`: reserved for generated manifests.
-- `data/vector_index`: reserved for future Chroma/FAISS files.
-
-## Retrieval And Citation Behavior
-
-v0.1.0 uses a deterministic local TF-IDF style search over stored chunks. This keeps the MVP usable without API keys, model downloads, or vector database setup. If no relevant indexed chunks are found, the app refuses to answer instead of filling gaps with general knowledge.
-
-Answers use this citation shape:
-
-```markdown
-Based only on indexed evidence:
-- Retrieved evidence snippet. [1]
-
-Sources:
-[1] Source Title - URL or local PDF page
-```
+When OpenAI synthesis is configured, the model is only given retrieved chunks and is instructed to preserve citations. If synthesis fails, SourcePilot falls back to the local cited answer path.
 
 ## Testing
 
-```powershell
-pytest
-```
-
-Current focused coverage:
-
-- Chunk cleaning and overlap behavior.
-- Duplicate document/chunk skipping.
-- RSS parsing from sample feed XML.
-- Citation formatting and unsupported-answer behavior.
-
-Run the lightweight retrieval evaluation:
+Run the Python test suite:
 
 ```powershell
-python evals/run_eval.py
+.\.venv\Scripts\python.exe -m pytest
 ```
 
-The report is written to `evals/eval_report.md`.
+Run the desktop smoke check:
+
+```powershell
+cd desktop
+npm.cmd run smoke
+```
+
+Current coverage includes ingestion, deduplication, citations, library organization, filtered search, onboarding endpoints, dashboard rendering, optional synthesis, and conversation saving.
 
 ## Roadmap
 
-- Add persistent Chroma or FAISS as an optional retrieval backend while keeping lexical fallback.
-- Add LangGraph as the visible agent orchestration layer once routing grows beyond the current tool wrappers.
-- Reuse PDF outline/table-of-contents extraction patterns from `PDFSplitter`.
-- Reuse full-article extraction and RSS summarization patterns from `MyNewsAlarm`.
-- Add API-source ingestion for domain-specific data feeds.
+Things I would like to add next:
+
+- daily auto-ingestion
+- scheduled briefings
+- saved research prompts
+- Markdown/PDF export
+- persistent vector search with FAISS or Chroma
+- local semantic embeddings
+- browser extension or clipboard capture
+- packaged Windows installer
+- GitHub Actions and a demo dataset
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

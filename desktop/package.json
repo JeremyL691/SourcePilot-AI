@@ -1,0 +1,20 @@
+{
+  "name": "sourcepilot-ai-desktop",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Electron desktop shell for SourcePilot AI.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node scripts/ensure-electron.js && electron .",
+    "start": "node scripts/ensure-electron.js && electron .",
+    "ensure-electron": "node scripts/ensure-electron.js",
+    "setup:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ..\\scripts\\setup-windows.ps1",
+    "smoke": "node scripts/smoke.js",
+    "package": "echo Packaging will be added after icon and installer settings are finalized."
+  },
+  "devDependencies": {
+    "@electron/get": "^4.0.1",
+    "extract-zip": "^2.0.1",
+    "electron": "^42.2.0"
+  }
+}

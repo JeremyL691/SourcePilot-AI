@@ -8,87 +8,494 @@ import streamlit as st
 
 
 API_BASE = os.getenv("SOURCEPILOT_API_BASE", "http://127.0.0.1:8000")
-
+SEARCHABLE_SOURCE_TYPES = ["", "rss", "webpage", "pdf", "conversation"]
+ADDABLE_SOURCE_TYPES = ["rss", "webpage", "pdf"]
+_BUTTON_COUNTER = 0
 
 st.set_page_config(page_title="SourcePilot AI", layout="wide")
 st.title("SourcePilot AI")
+st.caption("A local personal knowledge base that answers from your own sources.")
 
 
-def api_get(path: str):
-    response = requests.get(f"{API_BASE}{path}", timeout=30)
+def api_get(path: str, params: dict | None = None):
+    response = requests.get(f"{API_BASE}{path}", params=_clean_params(params), timeout=30)
     response.raise_for_status()
     return response.json()
 
 
-def api_post(path: str, payload: dict | None = None):
-    response = requests.post(f"{API_BASE}{path}", json=payload or {}, timeout=60)
+def api_post(path: str, payload: dict | None = None, files: dict | None = None, params: dict | None = None):
+    if files:
+        response = requests.post(f"{API_BASE}{path}", params=params, files=files, timeout=120)
+    else:
+        response = requests.post(f"{API_BASE}{path}", json=payload or {}, timeout=120)
     response.raise_for_status()
     return response.json()
 
 
-stats_cols = st.columns(4)
+def api_patch(path: str, payload: dict):
+    response = requests.patch(f"{API_BASE}{path}", json={k: v for k, v in payload.items() if v not in ("", None)}, timeout=60)
+    response.raise_for_status()
+    return response.json()
+
+
+def api_delete(path: str, params: dict | None = None):
+    response = requests.delete(f"{API_BASE}{path}", params=_clean_params(params), timeout=60)
+    response.raise_for_status()
+    return response.json()
+
+
+def _clean_params(params: dict | None) -> dict:
+    clean: dict = {}
+    for key, value in (params or {}).items():
+        if value in (None, "", []):
+            continue
+        clean[key] = value
+    return clean
+
+
+def _options(items: list[dict], label_key: str = "name") -> dict[str, int]:
+    return {f"{item['id']} - {item[label_key]}": item["id"] for item in items}
+
+
+def _next_button_key(label: str) -> str:
+    global _BUTTON_COUNTER
+    _BUTTON_COUNTER += 1
+    safe_label = "".join(char.lower() if char.isalnum() else "_" for char in label).strip("_")
+    return f"button_{safe_label}_{_BUTTON_COUNTER}"
+
+
+def _button(label: str, *, key: str | None = None, button_type: str = "secondary", **kwargs):
+    return st.button(label, type=button_type, key=key or _next_button_key(label), **kwargs)
+
+
+def _safe_action(label: str, action, success: str | None = None, button_type: str = "secondary", key: str | None = None):
+    if _button(label, key=key, button_type=button_type):
+        try:
+            result = action()
+            if success:
+                st.success(success)
+            return result
+        except requests.HTTPError as exc:
+            try:
+                detail = exc.response.json().get("detail")
+            except Exception:
+                detail = exc.response.text
+            st.error(detail or str(exc))
+        except Exception as exc:
+            st.error(str(exc))
+    return None
+
+
+def _init_chat_state() -> None:
+    st.session_state.setdefault("chat_history", [])
+    st.session_state.setdefault("conversation_markdown", "")
+
+
+def _conversation_title() -> str:
+    for message in st.session_state.chat_history:
+        if message["role"] == "user":
+            return message["content"][:80] or "Saved Conversation"
+    return "Saved Conversation"
+
+
+def _build_conversation_markdown() -> str:
+    title = _conversation_title()
+    lines = [
+        f"# Conversation Summary: {title}",
+        "",
+        "## What Was Discussed",
+    ]
+    for index, message in enumerate(st.session_state.chat_history, start=1):
+        if message["role"] == "user":
+            lines.append(f"- Question {index}: {message['content']}")
+    lines.extend(["", "## Key Answers"])
+    for message in st.session_state.chat_history:
+        if message["role"] == "assistant":
+            answer = message["content"].replace("\r\n", "\n").strip()
+            lines.append(answer)
+            lines.append("")
+    lines.extend(["## Retrieved Sources"])
+    seen: set[str] = set()
+    for message in st.session_state.chat_history:
+        for hit in message.get("hits", []):
+            label = f"{hit.get('citation', '')} {hit.get('title', '')} - {hit.get('url') or hit.get('local_path') or hit.get('source_name', '')}".strip()
+            if label and label not in seen:
+                seen.add(label)
+                lines.append(f"- {label}")
+    if not seen:
+        lines.append("- No retrieved sources were attached to this conversation.")
+    lines.extend(["", "## Full Conversation"])
+    for message in st.session_state.chat_history:
+        speaker = "User" if message["role"] == "user" else "SourcePilot AI"
+        lines.extend([f"### {speaker}", message["content"].strip(), ""])
+    return "\n".join(lines).strip()
+
+
 try:
-    stats = api_get("/stats")
-    for col, key in zip(stats_cols, ["sources", "documents", "chunks", "ingestion_runs"]):
-        col.metric(key.replace("_", " ").title(), stats.get(key, 0))
+    health = api_get("/health")
+    stats = health["stats"]
 except Exception as exc:
-    st.error(f"Backend unavailable at {API_BASE}: {exc}")
+    st.error(f"SourcePilot backend is not running at {API_BASE}. Start the desktop app or run the API first.")
+    st.caption(str(exc))
     st.stop()
 
-tab_sources, tab_runs, tab_ask, tab_briefings = st.tabs(["Sources", "Ingestion Runs", "Ask", "Briefings"])
+collections = api_get("/collections")
+tags = api_get("/tags")
+sources = api_get("/sources")
+runs = api_get("/ingestion-runs")
+_init_chat_state()
+
+metric_cols = st.columns(4)
+for col, key in zip(metric_cols, ["sources", "documents", "chunks", "ingestion_runs"]):
+    col.metric(key.replace("_", " ").title(), stats.get(key, 0))
+
+tab_start, tab_sources, tab_ask, tab_documents, tab_briefings, tab_runs, tab_advanced = st.tabs(
+    ["Start", "Sources", "Ask", "Documents", "Briefings", "Runs", "Advanced Library"]
+)
+
+with tab_start:
+    st.header("Start in three steps")
+    if stats["sources"] == 0:
+        st.info("Your knowledge base is empty. Load demo sources or add your own first source.")
+        start_cols = st.columns(2)
+        with start_cols[0]:
+            if _button("Load Demo Sources", key="start_load_demo_sources", button_type="primary"):
+                try:
+                    result = api_post("/demo/seed")
+                    st.success(result["message"])
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Could not load demo sources: {exc}")
+        with start_cols[1]:
+            st.write("Prefer your own material? Add a webpage, RSS feed, or PDF below.")
+    elif stats["chunks"] == 0:
+        st.warning("Sources exist, but nothing has been indexed yet. Run ingestion for one source to unlock search.")
+    else:
+        st.success("Your knowledge base is ready. Ask a question below or continue adding sources.")
+
+    step_add, step_ingest, step_ask = st.columns(3)
+    with step_add:
+        st.subheader("1. Add source")
+        source_type = st.selectbox("Source type", ["webpage", "rss", "pdf"], key="start_source_type")
+        source_name = st.text_input("Name", key="start_source_name")
+        if source_type in {"webpage", "rss"}:
+            source_url = st.text_input("URL", key="start_source_url", placeholder="https://example.com/article")
+            _safe_action(
+                "Add Source",
+                lambda: api_post("/sources", {"source_type": source_type, "name": source_name or source_url, "url": source_url}),
+                "Source added. Run ingestion next.",
+                "primary",
+                key="start_add_url_source",
+            )
+        else:
+            uploaded = st.file_uploader("Upload PDF", type=["pdf"], key="start_pdf")
+            if uploaded:
+                _safe_action(
+                    "Upload PDF",
+                    lambda: api_post(
+                        "/upload-pdf",
+                        files={"file": (uploaded.name, uploaded.getvalue(), "application/pdf")},
+                        params={"name": source_name or uploaded.name},
+                    ),
+                    "PDF uploaded. Run ingestion next.",
+                    "primary",
+                    key="start_upload_pdf",
+                )
+    with step_ingest:
+        st.subheader("2. Index content")
+        source_options = _options(sources)
+        if source_options:
+            selected_source = st.selectbox("Choose source", source_options.keys(), key="start_ingest_source")
+            source_id = source_options[selected_source]
+            result = _safe_action(
+                "Run Ingestion",
+                lambda: api_post(f"/sources/{source_id}/ingest"),
+                None,
+                "primary",
+                key="start_run_ingestion",
+            )
+            if result:
+                st.success(f"{result['status']}: {result['documents_inserted']} docs, {result['chunks_inserted']} chunks, {result['duplicates_skipped']} duplicates.")
+                st.rerun()
+        else:
+            st.caption("Add a source first.")
+    with step_ask:
+        st.subheader("3. Ask")
+        question = st.text_area("Question", key="start_question", placeholder="What does my knowledge base say about this topic?")
+        if _button("Ask Now", key="start_ask_now", button_type="primary", disabled=stats["chunks"] == 0 or not question):
+            try:
+                result = api_post("/search", {"query": question, "top_k": 5})
+                if result["hits"]:
+                    st.markdown(result["answer_markdown"])
+                else:
+                    st.warning("No matching indexed evidence yet. Add or ingest relevant sources first.")
+            except Exception as exc:
+                st.error(str(exc))
+
+    latest = runs[0] if runs else None
+    if latest:
+        st.divider()
+        st.subheader("Latest ingestion")
+        st.write(
+            f"Status: `{latest['status']}` | Documents: `{latest['documents_inserted']}/{latest['documents_found']}` | "
+            f"Chunks: `{latest['chunks_inserted']}` | Duplicates: `{latest['duplicates_skipped']}`"
+        )
+        if latest.get("error_message"):
+            st.warning(
+                "The latest ingestion could not fetch one or more sources. Some websites block automated reading. "
+                "Try another source, upload a PDF, or rerun ingestion later."
+            )
+            st.caption(latest["error_message"])
 
 with tab_sources:
-    left, right = st.columns([1, 2])
-    with left:
+    st.header("Sources")
+    add_col, manage_col = st.columns([1, 2])
+    with add_col:
         st.subheader("Add Source")
-        source_type = st.selectbox("Type", ["rss", "webpage", "pdf"])
-        name = st.text_input("Name")
+        source_type = st.selectbox("Type", ADDABLE_SOURCE_TYPES)
+        source_name = st.text_input("Source name")
         if source_type in {"rss", "webpage"}:
-            url = st.text_input("URL")
-            if st.button("Add Source", type="primary"):
-                api_post("/sources", {"source_type": source_type, "name": name or url, "url": url})
-                st.rerun()
+            source_url = st.text_input("URL")
+            _safe_action(
+                "Add Source",
+                lambda: api_post("/sources", {"source_type": source_type, "name": source_name or source_url, "url": source_url}),
+                "Source added.",
+                "primary",
+                key="sources_add_url_source",
+            )
         else:
             local_path = st.text_input("Local PDF path")
             uploaded = st.file_uploader("Or upload PDF", type=["pdf"])
-            if uploaded and st.button("Upload PDF", type="primary"):
-                files = {"file": (uploaded.name, uploaded.getvalue(), "application/pdf")}
-                response = requests.post(f"{API_BASE}/upload-pdf", params={"name": name or uploaded.name}, files=files, timeout=60)
-                response.raise_for_status()
+            if uploaded:
+                _safe_action(
+                    "Upload PDF",
+                    lambda: api_post(
+                        "/upload-pdf",
+                        files={"file": (uploaded.name, uploaded.getvalue(), "application/pdf")},
+                        params={"name": source_name or uploaded.name},
+                    ),
+                    "PDF uploaded.",
+                    "primary",
+                    key="sources_upload_pdf",
+                )
+            if local_path:
+                _safe_action(
+                    "Add Local PDF",
+                    lambda: api_post("/sources", {"source_type": "pdf", "name": source_name or Path(local_path).stem, "local_path": local_path}),
+                    "PDF source added.",
+                    key="sources_add_local_pdf",
+                )
+    with manage_col:
+        st.subheader("Manage Sources")
+        st.dataframe(sources, width="stretch", hide_index=True)
+        source_options = _options(sources)
+        if source_options:
+            selected = st.selectbox("Manage source", source_options.keys())
+            source_id = source_options[selected]
+            current = next(item for item in sources if item["id"] == source_id)
+            action_cols = st.columns(4)
+            if action_cols[0].button("Run Ingestion", key=f"source_{source_id}_run_ingestion"):
+                try:
+                    run = api_post(f"/sources/{source_id}/ingest")
+                    st.success(f"{run['status']}: +{run['chunks_inserted']} chunks, {run['duplicates_skipped']} duplicates skipped")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+            if action_cols[1].button("Pause", key=f"source_{source_id}_pause"):
+                api_patch(f"/sources/{source_id}", {"status": "paused"})
                 st.rerun()
-            if local_path and st.button("Add Local PDF"):
-                api_post("/sources", {"source_type": "pdf", "name": name or Path(local_path).stem, "local_path": local_path})
+            if action_cols[2].button("Activate", key=f"source_{source_id}_activate"):
+                api_patch(f"/sources/{source_id}", {"status": "active"})
                 st.rerun()
-    with right:
-        st.subheader("Source List")
-        sources = api_get("/sources")
-        st.dataframe(sources, use_container_width=True, hide_index=True)
-        source_ids = [source["id"] for source in sources]
-        if source_ids:
-            selected_source = st.selectbox("Run ingestion for source id", source_ids)
-            if st.button("Run Ingestion"):
-                run = api_post(f"/sources/{selected_source}/ingest")
-                st.success(f"Ingestion {run['status']}: +{run['chunks_inserted']} chunks, {run['duplicates_skipped']} duplicates skipped")
+            if action_cols[3].button("Delete Source", key=f"source_{source_id}_delete"):
+                api_delete(f"/sources/{source_id}")
                 st.rerun()
-
-with tab_runs:
-    st.subheader("Ingestion Logs")
-    st.dataframe(api_get("/ingestion-runs"), use_container_width=True, hide_index=True)
+            with st.expander("Edit metadata and advanced organization"):
+                new_name = st.text_input("Name", current["name"])
+                new_url = st.text_input("URL", current.get("url") or "")
+                new_path = st.text_input("Local path", current.get("local_path") or "")
+                if _button("Save Source", key=f"source_{source_id}_save"):
+                    api_patch(f"/sources/{source_id}", {"name": new_name, "url": new_url, "local_path": new_path})
+                    st.rerun()
+                if collections:
+                    selected_collection = st.selectbox("Add source to collection", _options(collections).keys())
+                    if _button("Attach Source To Collection", key=f"source_{source_id}_attach_collection"):
+                        api_post(f"/collections/{_options(collections)[selected_collection]}/items", {"item_type": "source", "item_id": source_id})
+                        st.rerun()
+                if tags:
+                    selected_tag = st.selectbox("Add tag to source", _options(tags).keys())
+                    if _button("Attach Tag To Source", key=f"source_{source_id}_attach_tag"):
+                        api_post(f"/tags/{_options(tags)[selected_tag]}/items", {"item_type": "source", "item_id": source_id})
+                        st.rerun()
 
 with tab_ask:
-    query = st.text_area("Question", placeholder="Compare what indexed sources say about vector databases.")
-    top_k = st.slider("Top K", 1, 12, 5)
-    if st.button("Search", type="primary") and query:
-        result = api_post("/search", {"query": query, "top_k": top_k})
-        st.markdown(result["answer_markdown"])
-        st.dataframe(result["hits"], use_container_width=True, hide_index=True)
+    st.header("Ask your knowledge base")
+    if stats["chunks"] == 0:
+        st.warning("No indexed chunks yet. Add a source and run ingestion from the Start page first.")
+
+    if st.session_state.chat_history:
+        st.subheader("Conversation")
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    query = st.text_area("Question", placeholder="What do my saved sources say about retrieval evaluation?")
+    ask_cols = st.columns(4)
+    top_k = ask_cols[0].slider("Top K", 1, 12, 5)
+    ask_source_type = ask_cols[1].selectbox("Type filter", SEARCHABLE_SOURCE_TYPES)
+    ask_collection_options = {"": None} | _options(collections)
+    ask_collection = ask_cols[2].selectbox("Collection filter", ask_collection_options.keys())
+    ask_tags = ask_cols[3].multiselect("Tag filter", [tag["name"] for tag in tags])
+    if _button("Ask", key="ask_submit", button_type="primary", disabled=not query or stats["chunks"] == 0):
+        result = api_post(
+            "/search",
+            {
+                "query": query,
+                "top_k": top_k,
+                "source_type": ask_source_type or None,
+                "collection_id": ask_collection_options[ask_collection],
+                "tags": ask_tags,
+            },
+        )
+        if result["hits"]:
+            st.session_state.chat_history.append({"role": "user", "content": query})
+            st.session_state.chat_history.append(
+                {"role": "assistant", "content": result["answer_markdown"], "hits": result["hits"]}
+            )
+            st.session_state.conversation_markdown = _build_conversation_markdown()
+            st.markdown(result["answer_markdown"])
+            st.dataframe(result["hits"], width="stretch", hide_index=True)
+        else:
+            st.warning("No matching indexed evidence. Try a broader query or ingest more sources.")
+
+    if st.session_state.chat_history:
+        st.divider()
+        st.subheader("Markdown Conversation Summary")
+        if not st.session_state.conversation_markdown:
+            st.session_state.conversation_markdown = _build_conversation_markdown()
+        st.text_area("Generated markdown", st.session_state.conversation_markdown, height=280, key="conversation_summary_preview")
+        save_cols = st.columns(2)
+        if save_cols[0].button("Save Conversation To Knowledge Base", key="save_conversation_to_kb", type="primary"):
+            try:
+                saved = api_post(
+                    "/conversations/save",
+                    {"title": _conversation_title(), "markdown": st.session_state.conversation_markdown},
+                )
+                if saved["documents_inserted"]:
+                    st.success("Conversation saved and indexed in your knowledge base.")
+                else:
+                    st.info("This conversation was already saved. No duplicate document was created.")
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+        if save_cols[1].button("Clear Conversation", key="clear_conversation"):
+            st.session_state.chat_history = []
+            st.session_state.conversation_markdown = ""
+            st.rerun()
+
+with tab_documents:
+    st.header("Documents")
+    filter_cols = st.columns(4)
+    source_type_filter = filter_cols[0].selectbox("Source type", SEARCHABLE_SOURCE_TYPES)
+    collection_filter_options = {"": None} | _options(collections)
+    collection_filter = filter_cols[1].selectbox("Collection", collection_filter_options.keys())
+    tag_filter_names = filter_cols[2].multiselect("Tags", [tag["name"] for tag in tags])
+    source_filter_options = {"": None} | _options(sources)
+    source_filter = filter_cols[3].selectbox("Source", source_filter_options.keys())
+    params = {
+        "source_type": source_type_filter,
+        "collection_id": collection_filter_options[collection_filter],
+        "tags": tag_filter_names,
+        "source_ids": [source_filter_options[source_filter]] if source_filter_options[source_filter] else None,
+    }
+    documents = api_get("/documents", params=params)
+    if not documents:
+        st.info("No documents match these filters yet.")
+    else:
+        st.dataframe(documents, width="stretch", hide_index=True)
+        selected_document = st.selectbox("Open document", _options(documents, "title").keys())
+        document_id = _options(documents, "title")[selected_document]
+        doc = api_get(f"/documents/{document_id}")
+        st.markdown(f"### {doc['title']}")
+        st.caption(f"Source: {doc.get('source_name')} | Type: {doc.get('source_type')} | URL: {doc.get('url') or ''}")
+        with st.expander("Advanced organization"):
+            if collections:
+                selected_collection = st.selectbox("Add document to collection", _options(collections).keys(), key="doc_collection")
+                if _button("Attach Document To Collection", key=f"document_{document_id}_attach_collection"):
+                    api_post(f"/collections/{_options(collections)[selected_collection]}/items", {"item_type": "document", "item_id": document_id})
+                    st.rerun()
+            if tags:
+                selected_tag = st.selectbox("Add tag to document", _options(tags).keys(), key="doc_tag")
+                if _button("Attach Tag To Document", key=f"document_{document_id}_attach_tag"):
+                    api_post(f"/tags/{_options(tags)[selected_tag]}/items", {"item_type": "document", "item_id": document_id})
+                    st.rerun()
+        st.text_area("Clean text", doc.get("clean_text") or "", height=260)
+        with st.expander("Chunks"):
+            st.dataframe(api_get(f"/documents/{document_id}/chunks"), width="stretch", hide_index=True)
 
 with tab_briefings:
-    topic = st.text_input("Briefing Topic", placeholder="AI data engineering news")
-    briefing_k = st.slider("Briefing Evidence Count", 3, 15, 8)
-    if st.button("Generate Briefing", type="primary") and topic:
+    st.header("Briefings")
+    topic = st.text_input("Briefing topic", placeholder="AI data engineering")
+    briefing_k = st.slider("Evidence count", 3, 15, 8)
+    if _button("Generate Briefing", key="briefings_generate", button_type="primary") and topic:
         briefing = api_post("/briefings", {"topic": topic, "top_k": briefing_k})
         st.markdown(briefing["answer_markdown"])
-    st.subheader("Briefing History")
-    st.dataframe(api_get("/briefings"), use_container_width=True, hide_index=True)
+    st.dataframe(api_get("/briefings"), width="stretch", hide_index=True)
 
+with tab_runs:
+    st.header("Ingestion Runs")
+    st.dataframe(runs, width="stretch", hide_index=True)
+    failures = [run for run in runs if run["status"] == "failed"]
+    if failures:
+        st.warning(f"{len(failures)} ingestion run(s) need attention. Check error_message for details.")
+
+with tab_advanced:
+    st.header("Advanced Library")
+    st.caption("Collections and tags are optional. Use them when your library grows.")
+    left, right = st.columns(2)
+    with left:
+        st.subheader("Collections")
+        with st.form("create_collection"):
+            name = st.text_input("Collection name")
+            description = st.text_area("Description")
+            if st.form_submit_button("Create Collection", type="primary"):
+                api_post("/collections", {"name": name, "description": description})
+                st.rerun()
+        st.dataframe(collections, width="stretch", hide_index=True)
+        collection_options = _options(collections)
+        if collection_options:
+            selected = st.selectbox("Edit collection", collection_options.keys())
+            collection_id = collection_options[selected]
+            current = next(item for item in collections if item["id"] == collection_id)
+            new_name = st.text_input("New collection name", current["name"])
+            new_description = st.text_area("New description", current.get("description") or "")
+            c1, c2 = st.columns(2)
+            if c1.button("Save Collection", key=f"collection_{collection_id}_save"):
+                api_patch(f"/collections/{collection_id}", {"name": new_name, "description": new_description})
+                st.rerun()
+            if c2.button("Delete Collection", key=f"collection_{collection_id}_delete"):
+                api_delete(f"/collections/{collection_id}")
+                st.rerun()
+    with right:
+        st.subheader("Tags")
+        with st.form("create_tag"):
+            tag_name = st.text_input("Tag name")
+            color = st.text_input("Color", placeholder="#4f46e5")
+            if st.form_submit_button("Create Tag", type="primary"):
+                api_post("/tags", {"name": tag_name, "color": color or None})
+                st.rerun()
+        st.dataframe(tags, width="stretch", hide_index=True)
+        tag_options = _options(tags)
+        if tag_options:
+            selected = st.selectbox("Edit tag", tag_options.keys())
+            tag_id = tag_options[selected]
+            current = next(item for item in tags if item["id"] == tag_id)
+            new_name = st.text_input("New tag name", current["name"])
+            new_color = st.text_input("New color", current.get("color") or "")
+            t1, t2 = st.columns(2)
+            if t1.button("Save Tag", key=f"tag_{tag_id}_save"):
+                api_patch(f"/tags/{tag_id}", {"name": new_name, "color": new_color})
+                st.rerun()
+            if t2.button("Delete Tag", key=f"tag_{tag_id}_delete"):
+                api_delete(f"/tags/{tag_id}")
+                st.rerun()

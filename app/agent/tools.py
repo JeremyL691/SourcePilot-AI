@@ -20,8 +20,27 @@ def ingest_source(db: Session, source_type: str, source_value: str, name: str | 
     return {"source_id": source.id, "run_id": run.id, "status": run.status}
 
 
-def search_documents(db: Session, query: str, top_k: int = 5) -> list[dict]:
-    return [hit.__dict__ for hit in run_search(db, query=query, top_k=top_k)]
+def search_documents(
+    db: Session,
+    query: str,
+    top_k: int = 5,
+    source_ids: list[int] | None = None,
+    source_type: str | None = None,
+    collection_id: int | None = None,
+    tags: list[str] | None = None,
+) -> list[dict]:
+    return [
+        hit.__dict__
+        for hit in run_search(
+            db,
+            query=query,
+            top_k=top_k,
+            source_ids=source_ids,
+            source_type=source_type,
+            collection_id=collection_id,
+            tags=tags,
+        )
+    ]
 
 
 def summarize_with_citations(db: Session, query: str, top_k: int = 5) -> str:
@@ -30,4 +49,3 @@ def summarize_with_citations(db: Session, query: str, top_k: int = 5) -> str:
 
 def generate_briefing(db: Session, topic: str, top_k: int = 8) -> str:
     return run_briefing(db, topic=topic, top_k=top_k).answer_markdown
-

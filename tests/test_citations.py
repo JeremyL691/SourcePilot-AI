@@ -5,6 +5,8 @@ from app.services.citations import answer_with_citations, citation_label, format
 def test_citation_label_for_web_source():
     hit = SearchResult(
         chunk_id=1,
+        document_id=2,
+        source_id=3,
         title="Vector Databases",
         source_name="Feed",
         source_type="rss",
@@ -22,4 +24,3 @@ def test_citation_label_for_web_source():
 
 def test_answer_without_hits_refuses():
     assert "not have enough indexed evidence" in answer_with_citations("Unsupported?", [])
-

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from app.config import settings
 from app.retrieval.search import SearchResult
+from app.services.synthesis import synthesize_with_openai
 
 
 def citation_label(hit: SearchResult, index: int) -> str:
@@ -30,6 +32,10 @@ def answer_with_citations(query: str, hits: list[SearchResult]) -> str:
             "Add or ingest relevant sources, then try again."
         )
 
+    llm_answer = synthesize_with_openai(query, hits, settings.openai_api_key, settings.openai_model)
+    if llm_answer:
+        return llm_answer
+
     bullets = []
     for index, hit in enumerate(hits[:4], start=1):
         bullets.append(f"- {hit.snippet} [{index}]")
@@ -58,4 +64,3 @@ def serialize_citations(hits: list[SearchResult]) -> list[dict]:
         }
         for index, hit in enumerate(hits, start=1)
     ]
-

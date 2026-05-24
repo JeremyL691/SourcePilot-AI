@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Source(Base):
@@ -17,7 +21,7 @@ class Source(Base):
     url: Mapped[str | None] = mapped_column(Text, nullable=True)
     local_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="active", index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     last_ingested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     documents: Mapped[list["Document"]] = relationship(back_populates="source", cascade="all, delete-orphan")
@@ -33,7 +37,7 @@ class Document(Base):
     url: Mapped[str | None] = mapped_column(Text, nullable=True)
     author: Mapped[str | None] = mapped_column(String(255), nullable=True)
     published_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     content_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     raw_text: Mapped[str] = mapped_column(Text)
     clean_text: Mapped[str] = mapped_column(Text)
@@ -63,7 +67,7 @@ class IngestionRun(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"), index=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="running", index=True)
     documents_found: Mapped[int] = mapped_column(Integer, default=0)
@@ -82,5 +86,50 @@ class Briefing(Base):
     query: Mapped[str] = mapped_column(Text)
     answer_markdown: Mapped[str] = mapped_column(Text)
     citation_json: Mapped[str] = mapped_column(Text, default="[]")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
+
+class Collection(Base):
+    __tablename__ = "collections"
+    __table_args__ = (UniqueConstraint("name", name="uq_collections_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+    __table_args__ = (UniqueConstraint("name", name="uq_tags_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), index=True)
+    color: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class CollectionItem(Base):
+    __tablename__ = "collection_items"
+    __table_args__ = (
+        UniqueConstraint("collection_id", "item_type", "item_id", name="uq_collection_item"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    collection_id: Mapped[int] = mapped_column(ForeignKey("collections.id"), index=True)
+    item_type: Mapped[str] = mapped_column(String(32), index=True)
+    item_id: Mapped[int] = mapped_column(Integer, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class ItemTag(Base):
+    __tablename__ = "item_tags"
+    __table_args__ = (
+        UniqueConstraint("tag_id", "item_type", "item_id", name="uq_item_tag"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), index=True)
+    item_type: Mapped[str] = mapped_column(String(32), index=True)
+    item_id: Mapped[int] = mapped_column(Integer, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)

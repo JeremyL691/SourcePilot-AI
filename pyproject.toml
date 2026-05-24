@@ -1,6 +1,6 @@
 [project]
 name = "sourcepilot-ai"
-version = "0.1.0"
+version = "0.3.0"
 description = "Local-first agentic data intelligence platform for cited retrieval over RSS, webpages, and PDFs."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -10,6 +10,7 @@ dependencies = [
   "feedparser>=6.0.11",
   "pandas>=2.2.2",
   "pydantic>=2.7.0",
+  "openai>=1.0.0",
   "pypdf>=4.2.0",
   "python-dotenv>=1.0.1",
   "python-multipart>=0.0.9",
@@ -28,6 +29,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-p no:cacheprovider"
 
 [tool.setuptools.packages.find]
 include = ["app*"]
