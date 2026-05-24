@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from app.config import settings
+from app.config import data_dir_is_fallback, settings
 
 CONFIG_FILENAME = "user_config.json"
 DEFAULT_MODEL = "gpt-4.1-mini"
@@ -63,4 +63,5 @@ def public_settings() -> dict[str, Any]:
         "openai_key_source": "env" if os.getenv("OPENAI_API_KEY") else ("config" if key else None),
         "openai_model": effective_openai_model(),
         "data_dir": str(settings.data_dir),
+        "data_dir_fallback": data_dir_is_fallback(),
     }

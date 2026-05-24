@@ -57,7 +57,14 @@ from app.services.library import (
     update_collection,
     update_tag,
 )
-from app.services.pipeline import create_source, delete_source, ingest_source, platform_stats, update_source
+from app.services.pipeline import (
+    SourcePausedError,
+    create_source,
+    delete_source,
+    ingest_source,
+    platform_stats,
+    update_source,
+)
 
 
 @asynccontextmanager
@@ -66,7 +73,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="SourceHero AI", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="SourceHero AI", version="0.4.1", lifespan=lifespan)
 
 @app.get("/")
 def root() -> dict:
@@ -96,6 +103,45 @@ def stats(db: Session = Depends(get_db)) -> dict:
 @app.post("/demo/seed")
 def seed_demo(db: Session = Depends(get_db)) -> dict:
     return seed_demo_data(db)
+
+
+@app.post("/demo/seed-and-ingest")
+def seed_and_ingest_demo(db: Session = Depends(get_db)) -> dict:
+    """Seed demo sources AND immediately ingest them so the Ask page works.
+
+    Synchronous: blocks until all demo sources have been processed. Returns
+    aggregate stats plus per-source results so the UI can show which feeds
+    failed (sites that block scrapers are common, and the demo should still
+    succeed if at least one source indexes content).
+    """
+    seed_result = seed_demo_data(db)
+    per_source: list[dict] = []
+    total_chunks = 0
+    for src in seed_result.get("sources", []):
+        try:
+            run = ingest_source(db, src["id"])
+            per_source.append({
+                "source_id": src["id"],
+                "name": src["name"],
+                "status": run.status,
+                "chunks_inserted": run.chunks_inserted,
+                "documents_inserted": run.documents_inserted,
+                "error_message": run.error_message,
+            })
+            total_chunks += run.chunks_inserted or 0
+        except Exception as exc:  # belt-and-suspenders; ingest_source already catches most
+            per_source.append({
+                "source_id": src["id"],
+                "name": src["name"],
+                "status": "failed",
+                "chunks_inserted": 0,
+                "error_message": str(exc),
+            })
+    return {
+        **seed_result,
+        "ingestion": per_source,
+        "total_chunks_inserted": total_chunks,
+    }
 
 
 @app.get("/settings")
@@ -131,13 +177,34 @@ def test_openai_settings() -> dict:
         raise HTTPException(status_code=400, detail="No OpenAI API key configured.")
     try:
         from openai import OpenAI
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="The `openai` Python package is not installed. Reinstall SourceHero dependencies.",
+        ) from exc
 
+    try:
         client = OpenAI(api_key=key)
         response = client.responses.create(model=model, input="Reply with the single word: ok")
         text = getattr(response, "output_text", "") or ""
         return {"ok": True, "model": model, "sample": text.strip()[:120]}
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"OpenAI call failed: {exc}") from exc
+        # Map common OpenAI SDK errors to readable detail strings without leaking tracebacks.
+        cls = exc.__class__.__name__
+        msg = str(exc)[:200]
+        if "AuthenticationError" in cls or "401" in msg:
+            detail = "Invalid API key. Double-check that you pasted it correctly and that it is active."
+        elif "RateLimitError" in cls or "429" in msg:
+            detail = "Rate limited by OpenAI. Wait a moment and try again."
+        elif "APIConnectionError" in cls or "Connection" in msg:
+            detail = "Could not reach OpenAI. Check your network connection."
+        elif "NotFoundError" in cls or "model" in msg.lower():
+            detail = f"Model `{model}` is not available on this key. Pick another model and save again."
+        elif "PermissionDeniedError" in cls or "403" in msg:
+            detail = "This key does not have permission to use that model."
+        else:
+            detail = f"OpenAI call failed ({cls}): {msg}"
+        raise HTTPException(status_code=400, detail=detail) from exc
 
 
 @app.post("/sources", response_model=SourceRead)
@@ -174,6 +241,8 @@ def remove_source(source_id: int, db: Session = Depends(get_db)) -> dict:
 def run_ingestion(source_id: int, db: Session = Depends(get_db)):
     try:
         return ingest_source(db, source_id)
+    except SourcePausedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

@@ -1,5 +1,57 @@
 # Changelog
 
+## v0.4.1 — 2026-05-24
+
+Quality pass after the v0.4 cross-platform release. No new features — just bug
+fixes and UX polish surfaced by an internal audit before producing installers.
+
+### Fixed
+
+- **Paused sources are now actually paused.** `ingest_source` previously
+  ignored the paused status entirely and would always overwrite it with
+  `active` or `failed` on completion. It now refuses to ingest a paused
+  source (returns HTTP 409 from `/sources/{id}/ingest`) and preserves the
+  paused state even if a concurrent edit pauses the source mid-run.
+- **Welcome wizard "Add my own source" button now goes somewhere.** It
+  dismisses the welcome banner and surfaces a hint pointing at the Step 1
+  add-source form. Previously it just reloaded the same view.
+- **Settings model dropdown preserves custom model names.** If you saved an
+  unrecognized model (e.g., `gpt-5-pro-experimental`), the dropdown used to
+  silently reset to `gpt-4.1-mini` on reload. It now keeps your choice.
+- **Pipeline error messages are sanitized.** Ingestion failures no longer
+  leak full exception reprs / partial tracebacks into the UI; common cases
+  (403, 404, timeout, DNS, TLS, encrypted PDFs) render as short readable
+  English. Full exceptions still go to the logger.
+- **Demo seed now also indexes.** New endpoint `POST /demo/seed-and-ingest`
+  seeds the three demo sources AND runs ingestion for each in one call. The
+  welcome page "Try the demo" button uses it so first-time users land on a
+  knowledge base that actually has searchable content.
+- **Graceful fallback when the data directory is read-only.** Locked-down
+  corporate Macs / sandboxed CI environments where
+  `~/Library/Application Support/` is unwritable used to crash the backend
+  at import time. We now probe the directory and fall back to a per-user
+  tempdir with a logged warning, exposing the fact via
+  `/health → data_dir_fallback`.
+- **`/settings/test-openai` returns specific errors.** Auth failures →
+  "Invalid API key", rate limits → "Rate limited", missing model → "Model
+  not available", etc. Replaces the previous catch-all "OpenAI call failed".
+
+### Changed
+
+- Sidebar hides the user's home directory: `~/Library/Application
+  Support/SourceHero` instead of the full path. The full path is in the
+  Settings tab.
+- Sources table only shows the columns that matter (name, type, status,
+  URL link, last indexed) with a human-readable timestamp.
+
+### Tests
+
+- 13 new test cases across paused-source behavior, error sanitization, the
+  seed-and-index endpoint, settings round-trip with custom models, and
+  read-only data dir fallback. Suite went from 21 to 34 passing tests.
+
+---
+
 ## v0.4.0 — 2026-05-24
 
 > Project renamed: SourcePilot AI → **SourceHero AI**.

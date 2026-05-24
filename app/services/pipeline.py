@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import re
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -9,6 +12,63 @@ from app.ingestion.rss import ingest_rss
 from app.ingestion.webpage import ingest_webpage
 from app.models import Document, DocumentChunk, IngestionRun, Source, utc_now
 from app.services.library import cleanup_item_links
+
+logger = logging.getLogger(__name__)
+
+
+class SourcePausedError(Exception):
+    """Raised when ingestion is attempted on a paused source."""
+
+
+_HTTP_CODE_RE = re.compile(r"\b(\d{3})\b")
+
+
+def _sanitize_error(exc: Exception) -> str:
+    """Distill an exception into something user-readable.
+
+    Stores full repr to the logger so we can debug; only the short version
+    is persisted to the DB and shown in the UI.
+    """
+    logger.exception("Ingestion failed", exc_info=exc)
+
+    name = exc.__class__.__name__
+    text = str(exc).strip()
+    lowered = text.lower()
+
+    # Order matters: network-level failures often embed port numbers (e.g., port=443)
+    # that look like HTTP status codes. Check transport problems first.
+    if "timeout" in lowered or "timed out" in lowered:
+        return "Request timed out."
+    if "name or service not known" in lowered or "nodename nor servname" in lowered:
+        return "DNS lookup failed for that URL."
+    if "ssl" in lowered or "certificate" in lowered:
+        return "TLS / certificate error."
+    if "encrypted" in lowered and "pdf" in lowered:
+        return "PDF is encrypted and cannot be parsed."
+    if "max retries exceeded" in lowered or "connection refused" in lowered or "connectionerror" in lowered:
+        return "Could not reach the host. Check your network and the URL."
+
+    # Only treat HTTP status codes when we have a real client-error-ish marker
+    # (e.g., "403 Client Error", "HTTP 404 ...") — not bare numbers.
+    http_match = re.search(r"(?:HTTP[/ ]|status(?:\s+code)?\s*[:=]?\s*|\b)(\d{3})\b\s*(?:Client Error|Server Error|Forbidden|Not Found|Unauthorized)", text, re.IGNORECASE)
+    if not http_match:
+        http_match = re.search(r"\b(\d{3})\s+(?:Client Error|Server Error|Forbidden|Not Found|Unauthorized)", text, re.IGNORECASE)
+    if http_match:
+        code = http_match.group(1)
+        if code == "403":
+            return "HTTP 403 — the site blocks automated readers."
+        if code == "404":
+            return "HTTP 404 — the page no longer exists."
+        if code.startswith("5"):
+            return f"HTTP {code} — the server returned an error."
+        if code == "401":
+            return "HTTP 401 — authentication required."
+        if code == "429":
+            return "HTTP 429 — rate limited. Try again later."
+
+    # Fallback — keep it short, no traceback noise.
+    short = text.splitlines()[0][:200] if text else name
+    return f"{name}: {short}" if short and name not in short else short
 
 
 def create_source(db: Session, source_type: str, name: str, url: str | None = None, local_path: str | None = None) -> Source:
@@ -68,7 +128,12 @@ def ingest_source(db: Session, source_id: int) -> IngestionRun:
     source = db.get(Source, source_id)
     if not source:
         raise ValueError(f"Source not found: {source_id}")
+    if source.status == "paused":
+        raise SourcePausedError(
+            f"Source {source_id} ({source.name!r}) is paused. Activate it before running ingestion."
+        )
 
+    previous_status = source.status
     run = IngestionRun(source_id=source.id, status="running")
     db.add(run)
     db.commit()
@@ -94,7 +159,9 @@ def ingest_source(db: Session, source_id: int) -> IngestionRun:
         run.status = "success"
         run.ended_at = utc_now()
         source.last_ingested_at = run.ended_at
-        source.status = "active"
+        # Preserve a user-set "paused" if it sneaked in via a concurrent edit; otherwise mark active.
+        if previous_status != "paused":
+            source.status = "active"
         db.commit()
     except Exception as exc:
         db.rollback()
@@ -103,8 +170,10 @@ def ingest_source(db: Session, source_id: int) -> IngestionRun:
         if run:
             run.status = "failed"
             run.ended_at = utc_now()
-            run.error_message = str(exc)
-        if source:
+            run.error_message = _sanitize_error(exc)
+        # Don't trample a user's pause: re-read current status (it could have been
+        # paused while we were running) instead of trusting the pre-flight snapshot.
+        if source and source.status != "paused" and previous_status != "paused":
             source.status = "failed"
         db.commit()
     db.refresh(run)

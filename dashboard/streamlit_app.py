@@ -7,6 +7,15 @@ import requests
 import streamlit as st
 
 
+def _humanize_path(path: str | None) -> str:
+    if not path:
+        return "—"
+    home = os.path.expanduser("~")
+    if path.startswith(home):
+        return "~" + path[len(home):]
+    return path
+
+
 API_BASE = os.getenv("SOURCEHERO_API_BASE", "http://127.0.0.1:8000")
 SEARCHABLE_SOURCE_TYPES = ["", "rss", "webpage", "pdf", "conversation"]
 ADDABLE_SOURCE_TYPES = ["rss", "webpage", "pdf"]
@@ -175,7 +184,7 @@ with st.sidebar:
     st.metric("Chunks", stats.get("chunks", 0))
     st.divider()
     st.caption(f"API: {API_BASE}")
-    st.caption(f"Data: {health.get('data_dir', '—')}")
+    st.caption(f"Data: {_humanize_path(health.get('data_dir'))}", help=health.get("data_dir") or "")
     if health.get("openai_configured"):
         preview = health.get("openai_key_preview") or "set"
         source_label = "env" if health.get("openai_key_source") == "env" else "in-app"
@@ -196,8 +205,18 @@ if stats["sources"] == 0 and not st.session_state.get("welcome_dismissed"):
     with welcome_cols[0]:
         if st.button("🚀 Try the demo (recommended)", type="primary", use_container_width=True, key="welcome_demo"):
             try:
-                result = api_post("/demo/seed")
-                st.success(result["message"])
+                with st.spinner("Loading demo content and indexing… (this can take 20–60s)"):
+                    result = api_post("/demo/seed-and-ingest")
+                ok_count = sum(1 for r in result.get("ingestion", []) if r["status"] == "success")
+                total = len(result.get("ingestion", []))
+                chunks = result.get("total_chunks_inserted", 0)
+                if chunks > 0:
+                    st.success(f"Indexed {chunks} chunks from {ok_count}/{total} demo sources. Head to the **Ask** tab.")
+                else:
+                    st.warning(
+                        f"Demo sources were added but none could be indexed right now "
+                        f"(network or blocked by the sites). You can retry from the Sources tab."
+                    )
                 st.session_state["welcome_dismissed"] = True
                 st.rerun()
             except Exception as exc:
@@ -205,6 +224,7 @@ if stats["sources"] == 0 and not st.session_state.get("welcome_dismissed"):
     with welcome_cols[1]:
         if st.button("➕ Add my own source", use_container_width=True, key="welcome_add"):
             st.session_state["welcome_dismissed"] = True
+            st.session_state["scroll_to_add_source"] = True
             st.rerun()
     with welcome_cols[2]:
         if st.button("Skip", use_container_width=True, key="welcome_skip"):
@@ -222,6 +242,8 @@ tab_start, tab_sources, tab_ask, tab_documents, tab_briefings, tab_runs, tab_adv
 
 with tab_start:
     st.header("Start in three steps")
+    if st.session_state.pop("scroll_to_add_source", False):
+        st.info("👇 Add your first source under **Step 1** below.")
     if stats["sources"] == 0:
         st.info("Your knowledge base is empty. Load demo sources or add your own first source.")
         start_cols = st.columns(2)
@@ -354,7 +376,22 @@ with tab_sources:
                 )
     with manage_col:
         st.subheader("Manage Sources")
-        st.dataframe(sources, width="stretch", hide_index=True)
+        st.dataframe(
+            sources,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "id": None,
+                "url": st.column_config.LinkColumn("URL", display_text="open"),
+                "local_path": None,
+                "created_at": None,
+                "last_ingested_at": st.column_config.DatetimeColumn("Last indexed", format="MMM D, h:mm A"),
+                "source_type": st.column_config.TextColumn("Type"),
+                "name": st.column_config.TextColumn("Name", width="large"),
+                "status": st.column_config.TextColumn("Status"),
+            },
+            column_order=["name", "source_type", "status", "url", "last_ingested_at"],
+        )
         source_options = _options(sources)
         if source_options:
             selected = st.selectbox("Manage source", source_options.keys())
@@ -591,15 +628,15 @@ with tab_settings:
             placeholder="sk-...",
             help="Get one at https://platform.openai.com/api-keys",
         )
+        model_choices = ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o", "gpt-5-mini"]
+        current_model = current_settings.get("openai_model") or "gpt-4.1-mini"
+        # Preserve a custom / unknown model name by prepending it instead of silently resetting.
+        if current_model not in model_choices:
+            model_choices = [current_model] + model_choices
         new_model = st.selectbox(
             "Model",
-            ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o", "gpt-5-mini"],
-            index=0 if not current_settings.get("openai_model") else max(
-                0,
-                ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o", "gpt-5-mini"].index(current_settings["openai_model"])
-                if current_settings.get("openai_model") in ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o", "gpt-5-mini"]
-                else 0,
-            ),
+            model_choices,
+            index=model_choices.index(current_model),
             help="`gpt-4.1-mini` is the recommended default — fast and inexpensive.",
         )
         col_save, col_clear = st.columns([1, 1])
