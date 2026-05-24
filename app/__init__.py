@@ -1,2 +1,2 @@
-"""SourcePilot AI application package."""
+"""SourceHero AI application package."""
 

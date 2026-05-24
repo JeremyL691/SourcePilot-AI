@@ -1,7 +1,7 @@
 [project]
-name = "sourcepilot-ai"
-version = "0.3.0"
-description = "Local-first agentic data intelligence platform for cited retrieval over RSS, webpages, and PDFs."
+name = "sourcehero-ai"
+version = "0.4.0"
+description = "SourceHero AI — local-first, cross-platform knowledge base for cited retrieval over RSS, webpages, and PDFs."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -17,7 +17,8 @@ dependencies = [
   "requests>=2.32.0",
   "sqlalchemy>=2.0.30",
   "streamlit>=1.35.0",
-  "uvicorn>=0.30.0"
+  "uvicorn>=0.30.0",
+  "platformdirs>=4.2.0"
 ]
 
 [project.optional-dependencies]

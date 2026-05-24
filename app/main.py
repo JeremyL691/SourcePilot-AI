@@ -38,6 +38,12 @@ from app.services.briefing import generate_briefing
 from app.services.citations import answer_with_citations, citation_label
 from app.services.conversations import save_conversation_markdown
 from app.services.demo import seed_demo_data
+from app.services.user_settings import (
+    clear_openai_key,
+    load_user_config,
+    public_settings,
+    save_user_config,
+)
 from app.services.library import (
     add_collection_item,
     add_item_tag,
@@ -60,23 +66,25 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="SourcePilot AI", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="SourceHero AI", version="0.4.0", lifespan=lifespan)
 
 @app.get("/")
 def root() -> dict:
-    return {"name": "SourcePilot AI", "status": "ready"}
+    return {"name": "SourceHero AI", "status": "ready"}
 
 
 @app.get("/health")
 def health(db: Session = Depends(get_db)) -> dict:
     return {
-        "name": "SourcePilot AI",
+        "name": "SourceHero AI",
         "status": "ready",
         "version": app.version,
         "api_port": settings.api_port,
         "dashboard_port": settings.dashboard_port,
         "database_url": settings.database_url,
+        "data_dir": str(settings.data_dir),
         "stats": platform_stats(db),
+        **public_settings(),
     }
 
 
@@ -88,6 +96,48 @@ def stats(db: Session = Depends(get_db)) -> dict:
 @app.post("/demo/seed")
 def seed_demo(db: Session = Depends(get_db)) -> dict:
     return seed_demo_data(db)
+
+
+@app.get("/settings")
+def get_settings() -> dict:
+    return public_settings()
+
+
+@app.post("/settings")
+def update_settings(payload: dict) -> dict:
+    incoming: dict = {}
+    if "openai_api_key" in payload:
+        key = (payload.get("openai_api_key") or "").strip()
+        if key:
+            incoming["openai_api_key"] = key
+        else:
+            clear_openai_key()
+    if "openai_model" in payload:
+        model = (payload.get("openai_model") or "").strip()
+        if model:
+            incoming["openai_model"] = model
+    if incoming:
+        save_user_config(incoming)
+    return public_settings()
+
+
+@app.post("/settings/test-openai")
+def test_openai_settings() -> dict:
+    from app.services.user_settings import effective_openai_key, effective_openai_model
+
+    key = effective_openai_key()
+    model = effective_openai_model()
+    if not key:
+        raise HTTPException(status_code=400, detail="No OpenAI API key configured.")
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=key)
+        response = client.responses.create(model=model, input="Reply with the single word: ok")
+        text = getattr(response, "output_text", "") or ""
+        return {"ok": True, "model": model, "sample": text.strip()[:120]}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"OpenAI call failed: {exc}") from exc
 
 
 @app.post("/sources", response_model=SourceRead)

@@ -7,13 +7,13 @@ import requests
 import streamlit as st
 
 
-API_BASE = os.getenv("SOURCEPILOT_API_BASE", "http://127.0.0.1:8000")
+API_BASE = os.getenv("SOURCEHERO_API_BASE", "http://127.0.0.1:8000")
 SEARCHABLE_SOURCE_TYPES = ["", "rss", "webpage", "pdf", "conversation"]
 ADDABLE_SOURCE_TYPES = ["rss", "webpage", "pdf"]
 _BUTTON_COUNTER = 0
 
-st.set_page_config(page_title="SourcePilot AI", layout="wide")
-st.title("SourcePilot AI")
+st.set_page_config(page_title="SourceHero AI", layout="wide")
+st.title("SourceHero AI")
 st.caption("A local personal knowledge base that answers from your own sources.")
 
 
@@ -68,6 +68,27 @@ def _button(label: str, *, key: str | None = None, button_type: str = "secondary
     return st.button(label, type=button_type, key=key or _next_button_key(label), **kwargs)
 
 
+def _friendly_error(exc: Exception) -> str:
+    """Turn a backend / network exception into something a non-developer can act on."""
+    text = str(exc)
+    lowered = text.lower()
+    if isinstance(exc, requests.ConnectionError) or "connection" in lowered or "max retries" in lowered:
+        return "Cannot reach the backend. Make sure SourceHero is running (restart the desktop app)."
+    if isinstance(exc, requests.Timeout) or "timeout" in lowered or "timed out" in lowered:
+        return "Request timed out. The network may be slow or the target site is not responding. Try again."
+    if "name or service not known" in lowered or "nodename nor servname" in lowered:
+        return "Could not resolve URL (DNS failure). Check spelling and your network connection."
+    if "ssl" in lowered or "certificate" in lowered:
+        return "SSL certificate error. The target site's certificate may be invalid."
+    if "403" in text or "401" in text:
+        return "Access denied (403/401). The site may be blocking automated readers."
+    if "404" in text:
+        return "Page not found (404). Check that the URL is correct."
+    if "pdf" in lowered and ("encrypted" in lowered or "decrypt" in lowered):
+        return "PDF is encrypted and cannot be parsed."
+    return text
+
+
 def _safe_action(label: str, action, success: str | None = None, button_type: str = "secondary", key: str | None = None):
     if _button(label, key=key, button_type=button_type):
         try:
@@ -80,9 +101,9 @@ def _safe_action(label: str, action, success: str | None = None, button_type: st
                 detail = exc.response.json().get("detail")
             except Exception:
                 detail = exc.response.text
-            st.error(detail or str(exc))
+            st.error(detail or _friendly_error(exc))
         except Exception as exc:
-            st.error(str(exc))
+            st.error(_friendly_error(exc))
     return None
 
 
@@ -126,7 +147,7 @@ def _build_conversation_markdown() -> str:
         lines.append("- No retrieved sources were attached to this conversation.")
     lines.extend(["", "## Full Conversation"])
     for message in st.session_state.chat_history:
-        speaker = "User" if message["role"] == "user" else "SourcePilot AI"
+        speaker = "User" if message["role"] == "user" else "SourceHero AI"
         lines.extend([f"### {speaker}", message["content"].strip(), ""])
     return "\n".join(lines).strip()
 
@@ -135,8 +156,8 @@ try:
     health = api_get("/health")
     stats = health["stats"]
 except Exception as exc:
-    st.error(f"SourcePilot backend is not running at {API_BASE}. Start the desktop app or run the API first.")
-    st.caption(str(exc))
+    st.error(f"SourceHero backend is not running at {API_BASE}. Start the desktop app or run the API first.")
+    st.caption(_friendly_error(exc) if "_friendly_error" in globals() else str(exc))
     st.stop()
 
 collections = api_get("/collections")
@@ -145,12 +166,58 @@ sources = api_get("/sources")
 runs = api_get("/ingestion-runs")
 _init_chat_state()
 
+with st.sidebar:
+    st.markdown("### 🦸 SourceHero")
+    st.caption("Local-first personal knowledge base")
+    st.divider()
+    st.metric("Sources", stats.get("sources", 0))
+    st.metric("Documents", stats.get("documents", 0))
+    st.metric("Chunks", stats.get("chunks", 0))
+    st.divider()
+    st.caption(f"API: {API_BASE}")
+    st.caption(f"Data: {health.get('data_dir', '—')}")
+    if health.get("openai_configured"):
+        preview = health.get("openai_key_preview") or "set"
+        source_label = "env" if health.get("openai_key_source") == "env" else "in-app"
+        st.success(f"✅ OpenAI key configured ({preview}, from {source_label})")
+    else:
+        st.info("💡 Add an OpenAI API key in the **Settings** tab for nicer synthesized answers.")
+
+# First-run welcome: takes over when knowledge base is brand new and user hasn't dismissed.
+if stats["sources"] == 0 and not st.session_state.get("welcome_dismissed"):
+    st.markdown("## 👋 Welcome to SourceHero AI")
+    st.markdown(
+        "Looks like this is your first time. Three steps to get going:\n\n"
+        "1. **Try the demo** (recommended) — one click loads example sources\n"
+        "2. **Add your own source** — paste an RSS / webpage URL or upload a PDF\n"
+        "3. **Ask questions** — head to the *Ask* tab and ask anything"
+    )
+    welcome_cols = st.columns([1, 1, 1])
+    with welcome_cols[0]:
+        if st.button("🚀 Try the demo (recommended)", type="primary", use_container_width=True, key="welcome_demo"):
+            try:
+                result = api_post("/demo/seed")
+                st.success(result["message"])
+                st.session_state["welcome_dismissed"] = True
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Could not load demo: {_friendly_error(exc)}")
+    with welcome_cols[1]:
+        if st.button("➕ Add my own source", use_container_width=True, key="welcome_add"):
+            st.session_state["welcome_dismissed"] = True
+            st.rerun()
+    with welcome_cols[2]:
+        if st.button("Skip", use_container_width=True, key="welcome_skip"):
+            st.session_state["welcome_dismissed"] = True
+            st.rerun()
+    st.divider()
+
 metric_cols = st.columns(4)
 for col, key in zip(metric_cols, ["sources", "documents", "chunks", "ingestion_runs"]):
     col.metric(key.replace("_", " ").title(), stats.get(key, 0))
 
-tab_start, tab_sources, tab_ask, tab_documents, tab_briefings, tab_runs, tab_advanced = st.tabs(
-    ["Start", "Sources", "Ask", "Documents", "Briefings", "Runs", "Advanced Library"]
+tab_start, tab_sources, tab_ask, tab_documents, tab_briefings, tab_runs, tab_advanced, tab_settings = st.tabs(
+    ["Start", "Sources", "Ask", "Documents", "Briefings", "Runs", "Advanced Library", "⚙️ Settings"]
 )
 
 with tab_start:
@@ -499,3 +566,82 @@ with tab_advanced:
             if t2.button("Delete Tag", key=f"tag_{tag_id}_delete"):
                 api_delete(f"/tags/{tag_id}")
                 st.rerun()
+
+with tab_settings:
+    st.header("Settings")
+    st.caption("API keys and model choice. Stored in your local data directory — never sent anywhere except OpenAI when you ask a question.")
+
+    current_settings = api_get("/settings")
+    st.subheader("OpenAI")
+
+    if current_settings.get("openai_configured"):
+        preview = current_settings.get("openai_key_preview") or "set"
+        source = current_settings.get("openai_key_source")
+        st.success(f"OpenAI key is configured ({preview}, from {source}).")
+        if source == "env":
+            st.caption("This key comes from the OPENAI_API_KEY environment variable. To change it, edit `.env` and restart, or override it below.")
+    else:
+        st.info("No OpenAI key configured. The app still works using local extractive answers — adding a key just makes answers more readable.")
+
+    with st.form("openai_settings_form"):
+        new_key = st.text_input(
+            "OpenAI API Key",
+            value="",
+            type="password",
+            placeholder="sk-...",
+            help="Get one at https://platform.openai.com/api-keys",
+        )
+        new_model = st.selectbox(
+            "Model",
+            ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o", "gpt-5-mini"],
+            index=0 if not current_settings.get("openai_model") else max(
+                0,
+                ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o", "gpt-5-mini"].index(current_settings["openai_model"])
+                if current_settings.get("openai_model") in ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o", "gpt-5-mini"]
+                else 0,
+            ),
+            help="`gpt-4.1-mini` is the recommended default — fast and inexpensive.",
+        )
+        col_save, col_clear = st.columns([1, 1])
+        save_clicked = col_save.form_submit_button("💾 Save", type="primary", use_container_width=True)
+        clear_clicked = col_clear.form_submit_button("🗑️ Clear API key", use_container_width=True)
+
+    if save_clicked:
+        payload: dict = {"openai_model": new_model}
+        if new_key.strip():
+            payload["openai_api_key"] = new_key.strip()
+        try:
+            api_post("/settings", payload)
+            st.success("Settings saved. Refreshing…")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Could not save settings: {_friendly_error(exc)}")
+
+    if clear_clicked:
+        try:
+            api_post("/settings", {"openai_api_key": ""})
+            st.success("API key cleared.")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Could not clear API key: {_friendly_error(exc)}")
+
+    if current_settings.get("openai_configured"):
+        st.divider()
+        if st.button("🔌 Test OpenAI connection", key="settings_test_openai"):
+            with st.spinner("Calling OpenAI…"):
+                try:
+                    result = api_post("/settings/test-openai")
+                    st.success(f"OK — model `{result.get('model')}` replied: “{result.get('sample')}”")
+                except requests.HTTPError as exc:
+                    try:
+                        detail = exc.response.json().get("detail")
+                    except Exception:
+                        detail = exc.response.text
+                    st.error(detail or _friendly_error(exc))
+                except Exception as exc:
+                    st.error(_friendly_error(exc))
+
+    st.divider()
+    st.subheader("Data directory")
+    st.code(current_settings.get("data_dir") or "—", language="text")
+    st.caption("All your sources, indexed documents, and this config file live here.")

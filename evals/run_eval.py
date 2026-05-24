@@ -26,7 +26,7 @@ def main() -> None:
     citation_score = sum(1 for row in rows if row[3]) / total
     keyword_score = sum(row[2] for row in rows) / max(1, sum(len(json.loads(line).get("expected_source_keywords", [])) for line in questions_path.open("r", encoding="utf-8")))
     lines = [
-        "# SourcePilot AI Eval Report",
+        "# SourceHero AI Eval Report",
         "",
         f"- Questions: {len(rows)}",
         f"- Citation availability score: {citation_score:.2%}",

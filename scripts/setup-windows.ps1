@@ -73,6 +73,6 @@ Write-Step "Running desktop smoke check"
 & npm.cmd run smoke
 
 Write-Host ""
-Write-Host "SourcePilot AI setup completed. Start it with:" -ForegroundColor Green
+Write-Host "SourceHero AI setup completed. Start it with:" -ForegroundColor Green
 Write-Host "cd `"$DesktopRoot`""
 Write-Host "npm.cmd run dev"

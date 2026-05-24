@@ -8,10 +8,14 @@ const required = [
   path.join(root, ".npmrc"),
   path.join(root, "main.js"),
   path.join(root, "scripts", "ensure-electron.js"),
-  path.join(projectRoot, "Install-SourcePilot.bat"),
-  path.join(projectRoot, "Start-SourcePilot.bat"),
+  path.join(projectRoot, "Install-SourceHero.bat"),
+  path.join(projectRoot, "Start-SourceHero.bat"),
+  path.join(projectRoot, "Install-SourceHero.command"),
+  path.join(projectRoot, "Start-SourceHero.command"),
   path.join(projectRoot, "scripts", "setup-windows.ps1"),
   path.join(projectRoot, "scripts", "start-windows.ps1"),
+  path.join(projectRoot, "scripts", "setup-macos.sh"),
+  path.join(projectRoot, "scripts", "start-macos.sh"),
   path.join(projectRoot, "app", "main.py"),
   path.join(projectRoot, "dashboard", "streamlit_app.py")
 ];

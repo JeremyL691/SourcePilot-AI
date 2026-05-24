@@ -49,6 +49,8 @@ def test_dashboard_renders_without_streamlit_widget_id_errors(monkeypatch):
                 {
                     "status": "ready",
                     "stats": {"sources": 1, "documents": 1, "chunks": 1, "ingestion_runs": 1},
+                    "openai_configured": False,
+                    "data_dir": "/tmp/fake",
                 }
             )
         if url.endswith("/collections"):
@@ -95,6 +97,16 @@ def test_dashboard_renders_without_streamlit_widget_id_errors(monkeypatch):
             )
         if url.endswith("/briefings"):
             return FakeResponse([])
+        if url.endswith("/settings"):
+            return FakeResponse(
+                {
+                    "openai_configured": False,
+                    "openai_key_preview": None,
+                    "openai_key_source": None,
+                    "openai_model": "gpt-4.1-mini",
+                    "data_dir": "/tmp/fake",
+                }
+            )
         return FakeResponse([])
 
     monkeypatch.setattr(requests, "get", fake_get)

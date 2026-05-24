@@ -1,5 +1,6 @@
 .env
 .venv/
+.claude/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -10,8 +11,12 @@ dist/
 desktop/node_modules/
 desktop/dist/
 desktop/out/
+data/sourcehero.db
+data/sourcehero.db-*
 data/sourcepilot.db
 data/sourcepilot.db-*
+desktop/runtime/
+desktop/dist/
 data/*.log
 data/raw/*
 !data/raw/.gitkeep
