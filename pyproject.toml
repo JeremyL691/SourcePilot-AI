@@ -1,0 +1,34 @@
+[project]
+name = "sourcepilot-ai"
+version = "0.1.0"
+description = "Local-first agentic data intelligence platform for cited retrieval over RSS, webpages, and PDFs."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "beautifulsoup4>=4.12.3",
+  "fastapi>=0.111.0",
+  "feedparser>=6.0.11",
+  "pandas>=2.2.2",
+  "pydantic>=2.7.0",
+  "pypdf>=4.2.0",
+  "python-dotenv>=1.0.1",
+  "python-multipart>=0.0.9",
+  "requests>=2.32.0",
+  "sqlalchemy>=2.0.30",
+  "streamlit>=1.35.0",
+  "uvicorn>=0.30.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28.0",
+  "pytest>=8.2.0"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["data*", "dashboard*", "evals*", "tests*"]

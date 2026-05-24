@@ -1,0 +1,2 @@
+"""SourcePilot AI application package."""
+

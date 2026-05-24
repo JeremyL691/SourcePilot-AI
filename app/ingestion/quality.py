@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+import json
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.ingestion.base import ExtractedDocument
+from app.ingestion.chunking import chunk_text, estimate_tokens, sha256_text
+from app.models import Document, DocumentChunk, Source
+
+
+def store_extracted_documents(db: Session, source: Source, extracted: list[ExtractedDocument]) -> dict[str, int]:
+    stats = {"documents_found": len(extracted), "documents_inserted": 0, "chunks_inserted": 0, "duplicates_skipped": 0}
+
+    for doc in extracted:
+        if not doc.clean_text:
+            stats["duplicates_skipped"] += 1
+            continue
+        content_hash = sha256_text(doc.url, doc.title, doc.clean_text)
+        exists = db.scalar(select(Document.id).where(Document.content_hash == content_hash))
+        if exists:
+            stats["duplicates_skipped"] += 1
+            continue
+
+        db_doc = Document(
+            source_id=source.id,
+            title=doc.title[:512],
+            url=doc.url,
+            author=doc.author,
+            published_at=doc.published_at,
+            content_hash=content_hash,
+            raw_text=doc.raw_text,
+            clean_text=doc.clean_text,
+        )
+        db.add(db_doc)
+        db.flush()
+        stats["documents_inserted"] += 1
+
+        for index, chunk in enumerate(chunk_text(doc.clean_text)):
+            metadata = dict(doc.metadata)
+            metadata.update({"title": doc.title, "url": doc.url, "source_id": source.id})
+            chunk_hash = sha256_text(source.source_type, doc.url, doc.title, chunk)
+            if db.scalar(select(DocumentChunk.id).where(DocumentChunk.chunk_hash == chunk_hash)):
+                stats["duplicates_skipped"] += 1
+                continue
+            db.add(
+                DocumentChunk(
+                    document_id=db_doc.id,
+                    chunk_index=index,
+                    chunk_text=chunk,
+                    chunk_hash=chunk_hash,
+                    token_estimate=estimate_tokens(chunk),
+                    metadata_json=json.dumps(metadata, ensure_ascii=False),
+                    embedding_id=chunk_hash[:16],
+                )
+            )
+            stats["chunks_inserted"] += 1
+
+    return stats
+
