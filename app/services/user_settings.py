@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from app.config import data_dir_is_fallback, settings
+from app.openai_models import DEFAULT_TEXT_MODEL
 
 CONFIG_FILENAME = "user_config.json"
-DEFAULT_MODEL = "gpt-4.1-mini"
+DEFAULT_MODEL = DEFAULT_TEXT_MODEL
 
 
 def _config_path() -> Path:

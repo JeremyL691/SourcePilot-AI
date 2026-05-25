@@ -54,6 +54,7 @@ class SearchRequest(BaseModel):
     source_type: str | None = Field(default=None, pattern="^(rss|webpage|pdf|conversation)$")
     collection_id: int | None = None
     tags: list[str] | None = None
+    retrieval_mode: str = Field(default="hybrid", pattern="^(lexical|hybrid|semantic)$")
 
 
 class SearchHit(BaseModel):
@@ -74,12 +75,17 @@ class SearchHit(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     answer_markdown: str
+    effective_retrieval_mode: str
     hits: list[SearchHit]
 
 
 class BriefingRequest(BaseModel):
     topic: str
     top_k: int = 8
+    source_ids: list[int] | None = None
+    source_type: str | None = Field(default=None, pattern="^(rss|webpage|pdf|conversation)$")
+    collection_id: int | None = None
+    tags: list[str] | None = None
 
 
 class BriefingRead(BaseModel):
@@ -176,3 +182,58 @@ class ConversationSaveResponse(BaseModel):
     documents_inserted: int
     chunks_inserted: int
     duplicates_skipped: int
+
+
+class IndexStatusRead(BaseModel):
+    backend: str
+    persisted: bool
+    enabled: bool
+    ready: bool
+    embedding_model: str
+    indexed_chunks: int
+    total_chunks: int
+    pending_chunks: int
+    note: str
+
+
+class ScheduleCreate(BaseModel):
+    job_type: str = Field(pattern="^(ingest_source|generate_briefing)$")
+    name: str | None = None
+    schedule_kind: str = Field(pattern="^(daily|weekly)$")
+    time_local: str
+    day_of_week: int | None = None
+    payload: dict = Field(default_factory=dict)
+
+
+class ScheduleUpdate(BaseModel):
+    name: str | None = None
+    status: str | None = Field(default=None, pattern="^(active|paused|failed)$")
+    schedule_kind: str | None = Field(default=None, pattern="^(daily|weekly)$")
+    time_local: str | None = None
+    day_of_week: int | None = None
+    payload: dict | None = None
+
+
+class ScheduleRead(BaseModel):
+    id: int
+    job_type: str
+    name: str
+    status: str
+    schedule_kind: str
+    time_local: str
+    day_of_week: int | None
+    payload: dict
+    last_run_at: datetime | None
+    next_run_at: datetime
+    last_error: str | None
+    created_at: datetime
+
+
+class ScheduleRunRead(BaseModel):
+    id: int
+    job_id: int
+    started_at: datetime
+    ended_at: datetime | None
+    status: str
+    summary: str | None
+    error_message: str | None

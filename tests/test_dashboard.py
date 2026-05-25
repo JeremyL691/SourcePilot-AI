@@ -97,13 +97,29 @@ def test_dashboard_renders_without_streamlit_widget_id_errors(monkeypatch):
             )
         if url.endswith("/briefings"):
             return FakeResponse([])
+        if url.endswith("/schedules"):
+            return FakeResponse([])
+        if url.endswith("/index/status"):
+            return FakeResponse(
+                {
+                    "backend": "openai_embeddings_file_index",
+                    "persisted": False,
+                    "enabled": False,
+                    "ready": False,
+                    "embedding_model": "text-embedding-3-small",
+                    "indexed_chunks": 0,
+                    "total_chunks": 1,
+                    "pending_chunks": 1,
+                    "note": "Embeddings are stored locally in the app data directory and searched without an external vector database.",
+                }
+            )
         if url.endswith("/settings"):
             return FakeResponse(
                 {
                     "openai_configured": False,
                     "openai_key_preview": None,
                     "openai_key_source": None,
-                    "openai_model": "gpt-4.1-mini",
+                    "openai_model": "gpt-5.4-mini",
                     "data_dir": "/tmp/fake",
                 }
             )

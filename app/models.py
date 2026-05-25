@@ -133,3 +133,36 @@ class ItemTag(Base):
     item_type: Mapped[str] = mapped_column(String(32), index=True)
     item_id: Mapped[int] = mapped_column(Integer, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class ScheduledJob(Base):
+    __tablename__ = "scheduled_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_type: Mapped[str] = mapped_column(String(32), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(32), default="active", index=True)
+    schedule_kind: Mapped[str] = mapped_column(String(32))
+    time_local: Mapped[str] = mapped_column(String(8))
+    day_of_week: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    runs: Mapped[list["ScheduledJobRun"]] = relationship(back_populates="job", cascade="all, delete-orphan")
+
+
+class ScheduledJobRun(Base):
+    __tablename__ = "scheduled_job_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("scheduled_jobs.id"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="running", index=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    job: Mapped["ScheduledJob"] = relationship(back_populates="runs")

@@ -1,186 +1,174 @@
 # SourceHero AI
 
-SourceHero AI is a local-first personal knowledge base for people who save a lot of links, PDFs, feeds, notes, and research conversations, then forget where the useful parts went.
+SourceHero AI is a local-first knowledge base for people like me who save too many links, PDFs, feeds, notes, and half-finished research threads, then later remember the idea but not where the evidence was.
 
-I built it to answer a simple question: what if my reading pile could turn into a searchable, cited knowledge base on my own computer, without needing to set up a cloud database or a paid AI workflow first?
+I did not build this to be another general chatbot. The point is much more practical: keep a reading pile on your own machine, turn it into something searchable, and get answers that stay tied to the sources you actually saved.
 
-The app runs locally on Windows and macOS, stores data in SQLite, ingests webpages/RSS/PDFs, lets you organize sources with collections and tags, and answers questions using only the evidence it has indexed. If you have an OpenAI key, it can synthesize a nicer answer. If not, it still works fully offline with local extractive answers and citations.
+Everything runs locally. Your library lives in SQLite on your computer. Webpages, RSS feeds, PDFs, and saved conversations all end up in the same place. If you add an OpenAI key, SourceHero can produce cleaner synthesized answers and optional semantic search. If you do not, the app still works with local lexical retrieval and citations.
 
-> Previously released as **SourcePilot AI**. The project was renamed to SourceHero AI in v0.4.
+> Earlier versions were released as **SourcePilot AI**. The project was renamed to **SourceHero AI** in v0.4.
 
-## What It Does
+## What It Feels Like To Use
 
-- Save webpages, RSS feeds, PDFs, and conversation summaries into one local library.
-- Ingest and clean source text automatically.
-- Chunk and deduplicate documents before indexing.
-- Search by keyword with filters for source type, source, collection, and tag.
-- Ask grounded questions and get cited answers instead of unsupported guesses.
-- Save each Ask conversation as a Markdown summary back into the knowledge base.
-- Browse documents and inspect the exact chunks used for retrieval.
-- Organize sources and documents with collections and tags.
-- Run as a desktop app through Electron, with FastAPI and Streamlit started for you.
-- Configure your OpenAI key inside the app — no editing dotfiles.
-- Stay usable without an OpenAI API key.
+The basic loop is simple:
 
-## Current Status
+1. Add a webpage, RSS feed, or PDF.
+2. Run ingestion so SourceHero cleans, chunks, and indexes the content.
+3. Ask a question later and get an answer grounded in the indexed evidence.
+4. Save useful conversations back into the library so they become searchable too.
 
-This is an early but usable desktop version. The goal is not to be another generic chatbot. The goal is to become a practical personal knowledge workspace: collect information, keep it organized, ask questions later, and preserve useful conversations as reusable notes.
+Over time, the library becomes less like a folder of stuff you meant to read and more like a personal reference system you can actually work with.
 
-The current version includes:
+## What It Can Do Right Now
+
+- Ingest webpages, RSS feeds, PDFs, and saved conversations
+- Store everything locally in SQLite
+- Organize sources and documents with collections and tags
+- Search with filters for source, type, collection, and tags
+- Blend lexical search with optional semantic retrieval when an OpenAI key is configured
+- Answer questions with citations instead of free-floating guesses
+- Generate briefings from indexed evidence
+- Save recurring briefing and ingestion schedules while the app is running
+- Run as a desktop app through Electron on macOS and Windows
+- Let you configure the OpenAI key and model inside the app instead of editing dotfiles
+
+## Current State
+
+This is still an early desktop product, but it is no longer just a prototype. The app has a real backend, a usable UI, cross-platform startup scripts, persistent per-user storage, and a focused automated test suite.
+
+The current release includes:
 
 - FastAPI backend
-- SQLite/SQLAlchemy data model
-- Streamlit dashboard with a first-run welcome wizard
-- Electron desktop shell with a splash screen and native menu
-- RSS, webpage, PDF, and saved conversation ingestion
-- Local TF-IDF style retrieval
-- Cited answers and briefings
-- Collections and tags
-- Demo source seeding
-- In-app Settings tab for the OpenAI API key and model
-- Cross-platform setup scripts (Windows PowerShell + macOS bash)
-- Per-user data directory on each platform
-- Friendly error messages for common ingestion failures
-- Focused automated tests
+- Streamlit dashboard
+- Electron desktop shell
+- SQLite / SQLAlchemy data model
+- Hybrid retrieval with local lexical search and optional semantic embeddings
+- In-app schedules for recurring ingestion and briefings
+- Conversation saving
+- Demo seeding for first-run onboarding
+- Human-readable ingestion errors for common failures
 
-## What's New In v0.4
+## What Changed In v0.5
 
-- **Cross-platform.** First-class macOS support alongside Windows. Same code, same UI, separate setup scripts.
-- **In-app API key.** A new Settings tab lets you paste your OpenAI key, pick a model, and test the connection without touching `.env`. The key is stored in your local data directory.
-- **First-run wizard.** When the knowledge base is empty, the app shows a welcome screen with one click to load demo sources, add your own, or skip.
-- **Per-user data directory.** Data now lives in the standard platform location instead of inside the project folder, so updating the source code never wipes your library. An old `./data/sourcepilot.db` is migrated automatically.
-- **Rename.** SourcePilot → SourceHero across identifiers, environment variables (`SOURCEHERO_*`), database filename, and packaging metadata.
-- **Better error messages.** Network and parsing failures show readable English instead of stack traces.
+`v0.5.0` is the first version that really starts to feel like a knowledge workspace instead of a demo.
 
-See [CHANGELOG.md](CHANGELOG.md) for the full list.
+- Search now supports hybrid retrieval, so keyword matches can be combined with a local semantic index when embeddings are available.
+- The semantic index can be inspected and rebuilt from inside the app.
+- Briefings can be filtered the same way search can.
+- You can create recurring ingestion jobs and recurring briefings without leaving the desktop app.
+- The OpenAI model picker now uses current real model IDs instead of placeholder names.
 
-## Quick Start On macOS
+More detail lives in [CHANGELOG.md](/Users/jeremyliu/Desktop/Projects/SourceHero-AI/CHANGELOG.md).
 
-Install the two system dependencies first:
+## Quick Start
 
-- Python 3.11 or newer  
-  The easiest way is Homebrew: `brew install python@3.11`.
+### macOS
 
-- Node.js LTS  
-  Either `brew install node` or the installer from <https://nodejs.org/>.
+Install:
 
-Then clone the project and double-click:
+- Python 3.11 or newer
+- Node.js LTS
+
+Then open:
 
 ```text
 Install-SourceHero.command
 ```
 
-After setup finishes, start the app with:
+When setup finishes, launch:
 
 ```text
 Start-SourceHero.command
 ```
 
-If macOS Gatekeeper blocks the first launch, right-click the file and choose **Open**.
+If Gatekeeper complains the first time, right-click and choose **Open**.
 
-## Quick Start On Windows
+### Windows
 
-Install the two system dependencies first:
+Install:
 
-- Python 3.11 or newer  
-  When installing Python, check `Add python.exe to PATH`.
+- Python 3.11 or newer
+- Node.js LTS
 
-- Node.js LTS  
-  The default installer options are fine.
-
-Then clone or open the project folder and double-click:
+Then open:
 
 ```text
 Install-SourceHero.bat
 ```
 
-After setup finishes, start the app with:
+When setup finishes, launch:
 
 ```text
 Start-SourceHero.bat
 ```
 
-The installer creates the Python virtual environment, installs Python dependencies, installs the Electron desktop dependencies, repairs the Electron binary if needed, and runs a smoke check.
-
 ## First Run
 
-Once the desktop window opens, you will see a welcome screen if your library is empty.
+If the library is empty, SourceHero shows a simple welcome flow.
 
-1. Click `Try the demo (recommended)` to seed a few sample sources, or click `Add my own source` to start fresh.
-2. On the `Start` page, run ingestion for one of the sources.
-3. Go to `Ask` and ask a question.
-4. Optional: open `⚙️ Settings`, paste your OpenAI key, and click `Save`. Answers will be synthesized into a more readable paragraph instead of bullet snippets.
+- `Try the demo` seeds a few example sources and indexes them
+- `Add my own source` drops you into the normal workflow
+- `Skip` opens the app without sample content
 
-If there are no indexed chunks yet, the app tells you to ingest something first. If a website blocks article fetching, RSS ingestion falls back to the feed summary instead of failing the whole run.
+The fastest way to understand the product is:
 
-## Configuring OpenAI
+1. Load the demo
+2. Open the `Ask` tab
+3. Ask a question
+4. Inspect the hits and citations
+5. Save the conversation back into the library
 
-You have two options.
+## OpenAI, Or Not
 
-### Option 1: Inside the app (recommended)
+You do not need an OpenAI key to use SourceHero.
 
-1. Open the desktop app.
-2. Click the `⚙️ Settings` tab.
-3. Paste your key in the `OpenAI API Key` field, pick a model, and click `Save`.
-4. Click `Test OpenAI connection` to confirm the key works.
+Without one, the app still:
 
-The key is written to `user_config.json` inside your platform data directory. It is never committed and never leaves your machine except when the app calls OpenAI on your behalf.
+- ingests content
+- searches locally
+- returns extractive answers with citations
 
-### Option 2: Environment variable
+With a key configured, the app can also:
 
-Set `OPENAI_API_KEY` in your shell or `.env`. The env var takes precedence over whatever is saved in the app, which is convenient for switching between accounts during development.
+- synthesize more natural answers
+- build and use semantic embeddings
+- rebuild the local semantic index
 
-Without a key, SourceHero falls back to local extractive answers with citations.
+You can configure the key either in the Settings tab or through `OPENAI_API_KEY`.
 
-## Saving Conversations
-
-The `Ask` tab keeps the current conversation in view. After you ask questions, SourceHero generates a Markdown conversation summary with:
-
-- what was discussed
-- key answers
-- retrieved sources
-- the full conversation
-
-Click:
+Recommended default model:
 
 ```text
-Save Conversation To Knowledge Base
+OPENAI_MODEL=gpt-5.4-mini
 ```
 
-The summary is saved as a `conversation` source under `Saved Conversations`, indexed like any other document, and available in future searches.
+## Running It As A Developer
 
-## Manual Developer Setup
-
-If you want to run it like a normal Python/Node project:
+If you want the normal Python + Node workflow:
 
 ```bash
 git clone https://github.com/JeremyL691/SourceHero-AI.git
 cd SourceHero-AI
 
-# macOS / Linux
 python3.11 -m venv .venv
 source .venv/bin/activate
-
-# Windows PowerShell
-# py -3.11 -m venv .venv
-# .\.venv\Scripts\Activate.ps1
 
 python -m pip install -U pip
 python -m pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Optional `.env` values:
+Optional env vars:
 
 ```text
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4.1-mini
+OPENAI_MODEL=gpt-5.4-mini
 SOURCEHERO_API_PORT=8000
 SOURCEHERO_DASHBOARD_PORT=8501
-# SOURCEHERO_DATA_DIR=/portable/path   # override the per-user data dir
+# SOURCEHERO_DATA_DIR=/portable/path
 ```
 
-## Running The Desktop App From Terminal
+Start the desktop shell:
 
 ```bash
 cd desktop
@@ -188,103 +176,52 @@ npm install
 npm run dev
 ```
 
-The desktop app starts:
-
-- FastAPI on `127.0.0.1:8000`
-- Streamlit on `127.0.0.1:8501`
-- an Electron window pointed at the Streamlit dashboard
-
-Electron installs can be fragile on Windows, so the project includes a repair step:
-
-```bash
-npm run ensure-electron
-```
-
-`npm run dev` runs that check automatically before launching.
-
-## Browser Mode For Development
-
-Run the backend:
+Or run the services directly:
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Run the dashboard in another terminal:
-
-```bash
 streamlit run dashboard/streamlit_app.py
 ```
 
-Open:
+Useful local URLs:
 
-- Dashboard: <http://localhost:8501>
-- API docs: <http://127.0.0.1:8000/docs>
+- Dashboard: [http://localhost:8501](http://localhost:8501)
+- API docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
-## Where Your Data Lives
+## Where Data Lives
 
-Starting in v0.4, the database and ingested files live in the standard platform location for application data:
+SourceHero stores user data in the normal per-user app location for each platform.
 
 - macOS: `~/Library/Application Support/SourceHero/`
-- Windows: `%APPDATA%\SourceHero\`
+- Windows: `%APPDATA%\\SourceHero\\`
 - Linux: `~/.local/share/SourceHero/`
 
-You can open this directory from the Electron menu: **File → Open Data Folder**. To use a different location (for a portable install, or to keep multiple libraries), set `SOURCEHERO_DATA_DIR`.
+That directory holds:
 
-If you upgrade from v0.3 and an old `./data/sourcepilot.db` exists, it is copied to the new location automatically on first launch. The original file is left in place so nothing is lost.
+- the SQLite database
+- raw and processed files
+- the local semantic index
+- logs
+- `user_config.json`
 
-## Project Layout
-
-```text
-SourceHero-AI/
-  app/
-    main.py                 # FastAPI app and REST endpoints
-    config.py               # Settings and per-user data paths
-    database.py             # SQLAlchemy engine/session setup
-    models.py               # SQLite models
-    schemas.py              # API schemas
-    ingestion/              # RSS, webpage, PDF, chunking, cleanup
-    retrieval/              # Local retrieval
-    services/               # Pipeline, library, citations, conversations, user_settings
-    agent/                  # Agent-facing tool wrappers
-  dashboard/
-    streamlit_app.py        # Streamlit UI
-  desktop/
-    main.js                 # Electron process manager
-    electron-builder.yml    # Packaging config (dmg, nsis)
-    scripts/                # Electron repair and smoke checks
-  scripts/
-    setup-macos.sh          # macOS installer script
-    start-macos.sh          # macOS launcher script
-    setup-windows.ps1       # Windows installer script
-    start-windows.ps1       # Windows launcher script
-    build-runtime.sh        # Embed python-build-standalone for release
-    build-runtime.ps1
-  tests/
-  evals/
-```
+You can override the location with `SOURCEHERO_DATA_DIR`.
 
 ## API Highlights
 
+These are the endpoints most people end up touching first:
+
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/health` | Runtime health, stats, OpenAI status |
-| `GET` | `/settings` | Read user-configurable settings |
-| `POST` | `/settings` | Save OpenAI key and/or model |
-| `POST` | `/settings/test-openai` | Verify the configured key actually works |
-| `POST` | `/demo/seed` | Add demo sources |
-| `POST` | `/sources` | Add RSS, webpage, PDF, or conversation source |
-| `GET` | `/sources` | List sources |
-| `PATCH` | `/sources/{source_id}` | Update a source |
-| `DELETE` | `/sources/{source_id}` | Delete a source and its documents |
+| `GET` | `/health` | Runtime health, stats, OpenAI status, semantic index status |
+| `GET` | `/index/status` | Local semantic index coverage and readiness |
+| `POST` | `/index/rebuild` | Rebuild embeddings for the current chunk corpus |
+| `POST` | `/sources` | Add a source |
 | `POST` | `/sources/{source_id}/ingest` | Run ingestion |
-| `GET` | `/documents` | Browse documents |
-| `GET` | `/documents/{document_id}` | View document detail |
-| `GET` | `/documents/{document_id}/chunks` | View document chunks |
-| `POST` | `/search` | Ask/search with citations |
-| `POST` | `/conversations/save` | Save a Markdown conversation summary |
+| `POST` | `/search` | Search / ask with citations |
 | `POST` | `/briefings` | Generate a cited briefing |
-| `POST` | `/upload-pdf` | Upload a PDF |
+| `GET` | `/schedules` | List recurring jobs |
+| `POST` | `/schedules` | Create a recurring ingest or briefing job |
+| `POST` | `/conversations/save` | Save a conversation back into the library |
 
 Example search:
 
@@ -294,47 +231,37 @@ curl -s -X POST http://127.0.0.1:8000/search \
   -d '{
     "query": "What do my sources say about retrieval evaluation?",
     "top_k": 5,
+    "retrieval_mode": "hybrid",
     "source_type": "webpage",
     "tags": ["retrieval"]
   }'
 ```
 
-## How Answers Work
-
-SourceHero searches indexed chunks and builds answers from retrieved evidence. If it cannot find relevant evidence, it refuses instead of inventing an answer.
-
-When OpenAI synthesis is configured, the model is only given retrieved chunks and is instructed to preserve citations. If synthesis fails for any reason — bad key, rate limit, network — SourceHero falls back to the local cited answer path so the app keeps working.
-
 ## Testing
 
-Run the Python test suite:
+Run the Python suite:
 
 ```bash
-pytest
+.venv/bin/pytest -q
 ```
 
-Run the desktop smoke check:
+Run the Electron smoke check:
 
 ```bash
 cd desktop
 npm run smoke
 ```
 
-Current coverage includes ingestion, deduplication, citations, library organization, filtered search, onboarding endpoints, dashboard rendering, optional synthesis, conversation saving, cross-platform path resolution, and legacy database migration.
-
 ## Roadmap
 
-Things I would like to add next:
+Things I still want to add:
 
-- persistent vector search with FAISS or Chroma
-- local semantic embeddings
-- daily auto-ingestion and scheduled briefings
-- saved research prompts
-- Markdown/PDF export
-- browser extension or clipboard capture
-- signed and notarized macOS builds, signed Windows installer
-- GitHub Actions for CI and release artifacts
+- better exports for saved work
+- easier capture from the browser or clipboard
+- stronger packaging and signing for release builds
+- CI and release automation
+- more opinionated research workflows once the core storage/retrieval loop is fully settled
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](/Users/jeremyliu/Desktop/Projects/SourceHero-AI/LICENSE).

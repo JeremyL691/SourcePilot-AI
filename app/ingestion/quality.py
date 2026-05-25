@@ -10,8 +10,14 @@ from app.ingestion.chunking import chunk_text, estimate_tokens, sha256_text
 from app.models import Document, DocumentChunk, Source
 
 
-def store_extracted_documents(db: Session, source: Source, extracted: list[ExtractedDocument]) -> dict[str, int]:
-    stats = {"documents_found": len(extracted), "documents_inserted": 0, "chunks_inserted": 0, "duplicates_skipped": 0}
+def store_extracted_documents(db: Session, source: Source, extracted: list[ExtractedDocument]) -> dict[str, object]:
+    stats = {
+        "documents_found": len(extracted),
+        "documents_inserted": 0,
+        "chunks_inserted": 0,
+        "duplicates_skipped": 0,
+        "chunk_ids_inserted": [],
+    }
 
     for doc in extracted:
         if not doc.clean_text:
@@ -44,18 +50,18 @@ def store_extracted_documents(db: Session, source: Source, extracted: list[Extra
             if db.scalar(select(DocumentChunk.id).where(DocumentChunk.chunk_hash == chunk_hash)):
                 stats["duplicates_skipped"] += 1
                 continue
-            db.add(
-                DocumentChunk(
-                    document_id=db_doc.id,
-                    chunk_index=index,
-                    chunk_text=chunk,
-                    chunk_hash=chunk_hash,
-                    token_estimate=estimate_tokens(chunk),
-                    metadata_json=json.dumps(metadata, ensure_ascii=False),
-                    embedding_id=chunk_hash[:16],
-                )
+            db_chunk = DocumentChunk(
+                document_id=db_doc.id,
+                chunk_index=index,
+                chunk_text=chunk,
+                chunk_hash=chunk_hash,
+                token_estimate=estimate_tokens(chunk),
+                metadata_json=json.dumps(metadata, ensure_ascii=False),
+                embedding_id=chunk_hash[:16],
             )
+            db.add(db_chunk)
+            db.flush()
+            stats["chunk_ids_inserted"].append(db_chunk.id)
             stats["chunks_inserted"] += 1
 
     return stats
-

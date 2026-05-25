@@ -77,7 +77,7 @@ class Settings:
     http_timeout: int = int(os.getenv("SOURCEHERO_HTTP_TIMEOUT", "20"))
     api_port: int = int(os.getenv("SOURCEHERO_API_PORT", "8000"))
     dashboard_port: int = int(os.getenv("SOURCEHERO_DASHBOARD_PORT", "8501"))
-    user_agent: str = "SourceHeroAI/0.4.1 (+local-first data intelligence)"
+    user_agent: str = "SourceHeroAI/0.5.0 (+local-first data intelligence)"
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY") or None
     openai_model: str | None = os.getenv("OPENAI_MODEL") or None
 

@@ -44,8 +44,8 @@ def test_legacy_db_migration(monkeypatch, tmp_path, capsys):
             legacy_db.unlink()
 
 
-def test_settings_user_agent_v04():
+def test_settings_user_agent_v050():
     from app.config import settings
 
-    assert "0.4" in settings.user_agent
+    assert "0.5" in settings.user_agent
     assert "SourceHero" in settings.user_agent

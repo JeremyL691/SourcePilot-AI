@@ -5,12 +5,30 @@ import json
 from sqlalchemy.orm import Session
 
 from app.models import Briefing
-from app.retrieval.search import search_documents
+from app.retrieval.search import retrieve_documents
 from app.services.citations import format_sources, serialize_citations
 
 
-def generate_briefing(db: Session, topic: str, top_k: int = 8) -> Briefing:
-    hits = search_documents(db, topic, top_k=top_k)
+def generate_briefing(
+    db: Session,
+    topic: str,
+    top_k: int = 8,
+    source_ids: list[int] | None = None,
+    source_type: str | None = None,
+    collection_id: int | None = None,
+    tags: list[str] | None = None,
+) -> Briefing:
+    bundle = retrieve_documents(
+        db,
+        topic,
+        top_k=top_k,
+        source_ids=source_ids,
+        source_type=source_type,
+        collection_id=collection_id,
+        tags=tags,
+        retrieval_mode="hybrid",
+    )
+    hits = bundle.hits
     if not hits:
         answer = (
             f"# Briefing: {topic}\n\n"
@@ -19,7 +37,18 @@ def generate_briefing(db: Session, topic: str, top_k: int = 8) -> Briefing:
         citations: list[dict] = []
     else:
         bullets = [f"- {hit.snippet} [{index}]" for index, hit in enumerate(hits, start=1)]
-        answer = "\n".join([f"# Briefing: {topic}", "", "## Evidence Summary", *bullets, "", format_sources(hits)])
+        answer = "\n".join(
+            [
+                f"# Briefing: {topic}",
+                "",
+                f"_Retrieval mode: `{bundle.effective_retrieval_mode}`_",
+                "",
+                "## Evidence Summary",
+                *bullets,
+                "",
+                format_sources(hits),
+            ]
+        )
         citations = serialize_citations(hits)
 
     briefing = Briefing(query=topic, answer_markdown=answer, citation_json=json.dumps(citations, ensure_ascii=False))
@@ -27,4 +56,3 @@ def generate_briefing(db: Session, topic: str, top_k: int = 8) -> Briefing:
     db.commit()
     db.refresh(briefing)
     return briefing
-

@@ -1,5 +1,60 @@
 # Changelog
 
+## v0.5.0 — 2026-05-25
+
+Feature release focused on retrieval quality, recurring automation, and a
+cleanup of the OpenAI model configuration UX.
+
+### Added
+
+- **Hybrid retrieval.** `POST /search` now accepts
+  `retrieval_mode=lexical|hybrid|semantic`, and the response reports the
+  `effective_retrieval_mode` actually used.
+- **Persistent semantic index.** Chunk embeddings can now be stored locally
+  under the app data directory, inspected via `GET /index/status`, and
+  rebuilt with `POST /index/rebuild`.
+- **Recurring schedules.** New `scheduled_jobs` / `scheduled_job_runs` tables
+  and schedule APIs:
+  `GET/POST/PATCH/DELETE /schedules` plus `POST /schedules/{id}/run-now`.
+- **Scheduled briefings and auto-ingest.** The Streamlit app can now create
+  daily/weekly recurring source ingestion and briefing jobs while the app is
+  running.
+
+### Changed
+
+- **Official OpenAI model picker.** Settings now default to `gpt-5.4-mini`
+  and list current real text-capable OpenAI model IDs instead of stale
+  placeholder values. Custom saved model names are still preserved.
+- **Briefings accept filters.** `BriefingRequest` now supports the same
+  source, collection, and tag filters as search.
+- **Health reporting includes index state.** `/health` now surfaces semantic
+  index availability and chunk coverage in addition to the existing OpenAI
+  status fields.
+
+### Fixed
+
+- **Semantic index rebuild is non-destructive on failure.** A rebuild now
+  preserves the last good index unless the new pass completes successfully.
+- **Index writes are atomic.** Local vector index updates now use a lock and
+  atomic file replacement instead of racy read-modify-write cycles.
+- **Schedules no longer self-disable on transient runtime failures.** Failed
+  runs record `last_error` and advance `next_run_at`, but the recurring job
+  remains active for the next interval unless the user pauses it.
+- **Schedule creation validates source references.** Auto-ingest schedules now
+  reject nonexistent `source_id` values up front instead of creating doomed
+  jobs that only fail later.
+- **Partial indexes are not advertised as ready.** Semantic mode only becomes
+  ready once the stored embedding count covers the full chunk corpus.
+
+### Tests
+
+- Added coverage for hybrid fallback behavior, semantic index rebuild and
+  failure recovery, vector cleanup on source deletion, schedules retry
+  behavior, invalid schedule references, and the refreshed OpenAI model
+  defaults. Suite now passes 49 tests.
+
+---
+
 ## v0.4.1 — 2026-05-24
 
 Quality pass after the v0.4 cross-platform release. No new features — just bug

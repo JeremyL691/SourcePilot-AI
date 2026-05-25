@@ -8,6 +8,7 @@ from app.ingestion.chunking import clean_text
 from app.ingestion.quality import store_extracted_documents
 from app.models import Source
 from app.services.pipeline import create_source
+from app.services.semantic_index import index_new_chunks
 
 
 CONVERSATION_SOURCE_NAME = "Saved Conversations"
@@ -33,6 +34,10 @@ def save_conversation_markdown(db: Session, title: str, markdown: str) -> dict:
         ],
     )
     db.commit()
+    try:
+        index_new_chunks(db, [chunk_id for chunk_id in stats.get("chunk_ids_inserted", []) if chunk_id is not None])
+    except Exception:
+        pass
     return {"source_id": source.id, "status": "saved", **stats}
 
 

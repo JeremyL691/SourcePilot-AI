@@ -12,6 +12,7 @@ from app.ingestion.rss import ingest_rss
 from app.ingestion.webpage import ingest_webpage
 from app.models import Document, DocumentChunk, IngestionRun, Source, utc_now
 from app.services.library import cleanup_item_links
+from app.services.semantic_index import index_new_chunks, remove_chunk_embeddings
 
 logger = logging.getLogger(__name__)
 
@@ -118,10 +119,12 @@ def delete_source(db: Session, source_id: int) -> None:
     if not source:
         raise ValueError(f"Source not found: {source_id}")
     document_ids = db.scalars(select(Document.id).where(Document.source_id == source_id)).all()
+    chunk_ids = db.scalars(select(DocumentChunk.id).where(DocumentChunk.document_id.in_(document_ids))).all() if document_ids else []
     cleanup_item_links(db, "source", [source_id])
     cleanup_item_links(db, "document", list(document_ids))
     db.delete(source)
     db.commit()
+    remove_chunk_embeddings(list(chunk_ids))
 
 
 def ingest_source(db: Session, source_id: int) -> IngestionRun:
@@ -163,6 +166,10 @@ def ingest_source(db: Session, source_id: int) -> IngestionRun:
         if previous_status != "paused":
             source.status = "active"
         db.commit()
+        try:
+            index_new_chunks(db, [chunk_id for chunk_id in stats.get("chunk_ids_inserted", []) if chunk_id is not None])
+        except Exception as exc:
+            logger.warning("Semantic indexing failed after ingest for source %s: %s", source_id, exc)
     except Exception as exc:
         db.rollback()
         run = db.get(IngestionRun, run.id)

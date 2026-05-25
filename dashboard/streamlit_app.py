@@ -6,6 +6,8 @@ from pathlib import Path
 import requests
 import streamlit as st
 
+from app.openai_models import DEFAULT_TEXT_MODEL, TEXT_MODEL_CHOICES
+
 
 def _humanize_path(path: str | None) -> str:
     if not path:
@@ -173,6 +175,8 @@ collections = api_get("/collections")
 tags = api_get("/tags")
 sources = api_get("/sources")
 runs = api_get("/ingestion-runs")
+schedules = api_get("/schedules")
+index_status = api_get("/index/status")
 _init_chat_state()
 
 with st.sidebar:
@@ -185,6 +189,11 @@ with st.sidebar:
     st.divider()
     st.caption(f"API: {API_BASE}")
     st.caption(f"Data: {_humanize_path(health.get('data_dir'))}", help=health.get("data_dir") or "")
+    st.caption(
+        f"Semantic index: {index_status.get('indexed_chunks', 0)}/{index_status.get('total_chunks', 0)} chunks"
+        if index_status.get("enabled")
+        else "Semantic index: disabled (no OpenAI key)"
+    )
     if health.get("openai_configured"):
         preview = health.get("openai_key_preview") or "set"
         source_label = "env" if health.get("openai_key_source") == "env" else "in-app"
@@ -236,8 +245,8 @@ metric_cols = st.columns(4)
 for col, key in zip(metric_cols, ["sources", "documents", "chunks", "ingestion_runs"]):
     col.metric(key.replace("_", " ").title(), stats.get(key, 0))
 
-tab_start, tab_sources, tab_ask, tab_documents, tab_briefings, tab_runs, tab_advanced, tab_settings = st.tabs(
-    ["Start", "Sources", "Ask", "Documents", "Briefings", "Runs", "Advanced Library", "⚙️ Settings"]
+tab_start, tab_sources, tab_ask, tab_documents, tab_briefings, tab_schedules, tab_runs, tab_advanced, tab_settings = st.tabs(
+    ["Start", "Sources", "Ask", "Documents", "Briefings", "Schedules", "Runs", "Advanced Library", "⚙️ Settings"]
 )
 
 with tab_start:
@@ -313,9 +322,10 @@ with tab_start:
         question = st.text_area("Question", key="start_question", placeholder="What does my knowledge base say about this topic?")
         if _button("Ask Now", key="start_ask_now", button_type="primary", disabled=stats["chunks"] == 0 or not question):
             try:
-                result = api_post("/search", {"query": question, "top_k": 5})
+                result = api_post("/search", {"query": question, "top_k": 5, "retrieval_mode": "hybrid"})
                 if result["hits"]:
                     st.markdown(result["answer_markdown"])
+                    st.caption(f"Retrieval mode: {result.get('effective_retrieval_mode', 'lexical')}")
                 else:
                     st.warning("No matching indexed evidence yet. Add or ingest relevant sources first.")
             except Exception as exc:
@@ -421,6 +431,32 @@ with tab_sources:
                 if _button("Save Source", key=f"source_{source_id}_save"):
                     api_patch(f"/sources/{source_id}", {"name": new_name, "url": new_url, "local_path": new_path})
                     st.rerun()
+                st.markdown("#### Auto ingestion")
+                schedule_kind = st.selectbox("Repeat", ["daily", "weekly"], key=f"source_{source_id}_schedule_kind")
+                time_local = st.text_input("Time (HH:MM)", value="09:00", key=f"source_{source_id}_schedule_time")
+                day_of_week = st.selectbox(
+                    "Day of week",
+                    options=list(range(7)),
+                    format_func=lambda value: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][value],
+                    key=f"source_{source_id}_schedule_day",
+                )
+                if _button("Create Auto Ingest", key=f"source_{source_id}_schedule_create"):
+                    try:
+                        api_post(
+                            "/schedules",
+                            {
+                                "job_type": "ingest_source",
+                                "name": f"Auto ingest: {current['name']}",
+                                "schedule_kind": schedule_kind,
+                                "time_local": time_local,
+                                "day_of_week": day_of_week if schedule_kind == "weekly" else None,
+                                "payload": {"source_id": source_id},
+                            },
+                        )
+                        st.success("Schedule created.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(_friendly_error(exc))
                 if collections:
                     selected_collection = st.selectbox("Add source to collection", _options(collections).keys())
                     if _button("Attach Source To Collection", key=f"source_{source_id}_attach_collection"):
@@ -446,16 +482,27 @@ with tab_ask:
     query = st.text_area("Question", placeholder="What do my saved sources say about retrieval evaluation?")
     ask_cols = st.columns(4)
     top_k = ask_cols[0].slider("Top K", 1, 12, 5)
-    ask_source_type = ask_cols[1].selectbox("Type filter", SEARCHABLE_SOURCE_TYPES)
+    retrieval_mode = ask_cols[1].selectbox("Retrieval", ["hybrid", "lexical", "semantic"], index=0)
+    ask_source_type = ask_cols[2].selectbox("Type filter", SEARCHABLE_SOURCE_TYPES)
     ask_collection_options = {"": None} | _options(collections)
-    ask_collection = ask_cols[2].selectbox("Collection filter", ask_collection_options.keys())
-    ask_tags = ask_cols[3].multiselect("Tag filter", [tag["name"] for tag in tags])
+    ask_collection = ask_cols[3].selectbox("Collection filter", ask_collection_options.keys())
+    ask_tags = st.multiselect("Tag filter", [tag["name"] for tag in tags], key="ask_tag_filter")
+    if retrieval_mode != "lexical":
+        if index_status.get("enabled") and index_status.get("ready"):
+            st.caption(
+                f"Semantic index ready: {index_status.get('indexed_chunks', 0)} chunk embeddings stored locally."
+            )
+        elif index_status.get("enabled"):
+            st.info("Semantic search is enabled, but the index is not ready yet. Results will fall back to lexical search.")
+        else:
+            st.info("No OpenAI key configured, so hybrid/semantic requests fall back to lexical search.")
     if _button("Ask", key="ask_submit", button_type="primary", disabled=not query or stats["chunks"] == 0):
         result = api_post(
             "/search",
             {
                 "query": query,
                 "top_k": top_k,
+                "retrieval_mode": retrieval_mode,
                 "source_type": ask_source_type or None,
                 "collection_id": ask_collection_options[ask_collection],
                 "tags": ask_tags,
@@ -468,6 +515,7 @@ with tab_ask:
             )
             st.session_state.conversation_markdown = _build_conversation_markdown()
             st.markdown(result["answer_markdown"])
+            st.caption(f"Retrieval mode: {result.get('effective_retrieval_mode', 'lexical')}")
             st.dataframe(result["hits"], width="stretch", hide_index=True)
         else:
             st.warning("No matching indexed evidence. Try a broader query or ingest more sources.")
@@ -541,10 +589,123 @@ with tab_briefings:
     st.header("Briefings")
     topic = st.text_input("Briefing topic", placeholder="AI data engineering")
     briefing_k = st.slider("Evidence count", 3, 15, 8)
+    briefing_cols = st.columns(4)
+    briefing_source_type = briefing_cols[0].selectbox("Type filter", SEARCHABLE_SOURCE_TYPES, key="briefing_source_type")
+    briefing_collection_options = {"": None} | _options(collections)
+    briefing_collection = briefing_cols[1].selectbox("Collection", briefing_collection_options.keys(), key="briefing_collection")
+    briefing_source_options = {"": None} | _options(sources)
+    briefing_source = briefing_cols[2].selectbox("Source", briefing_source_options.keys(), key="briefing_source")
+    briefing_tags = briefing_cols[3].multiselect("Tags", [tag["name"] for tag in tags], key="briefing_tags")
     if _button("Generate Briefing", key="briefings_generate", button_type="primary") and topic:
-        briefing = api_post("/briefings", {"topic": topic, "top_k": briefing_k})
+        briefing = api_post(
+            "/briefings",
+            {
+                "topic": topic,
+                "top_k": briefing_k,
+                "source_ids": [briefing_source_options[briefing_source]] if briefing_source_options[briefing_source] else None,
+                "source_type": briefing_source_type or None,
+                "collection_id": briefing_collection_options[briefing_collection],
+                "tags": briefing_tags,
+            },
+        )
         st.markdown(briefing["answer_markdown"])
+    with st.expander("Save as scheduled briefing"):
+        schedule_kind = st.selectbox("Repeat", ["daily", "weekly"], key="briefing_schedule_kind")
+        time_local = st.text_input("Time (HH:MM)", value="08:00", key="briefing_schedule_time")
+        day_of_week = st.selectbox(
+            "Day of week",
+            options=list(range(7)),
+            format_func=lambda value: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][value],
+            key="briefing_schedule_day",
+        )
+        if _button("Create Scheduled Briefing", key="briefing_schedule_create", disabled=not topic):
+            try:
+                api_post(
+                    "/schedules",
+                    {
+                        "job_type": "generate_briefing",
+                        "name": f"Auto briefing: {topic}",
+                        "schedule_kind": schedule_kind,
+                        "time_local": time_local,
+                        "day_of_week": day_of_week if schedule_kind == "weekly" else None,
+                        "payload": {
+                            "topic": topic,
+                            "top_k": briefing_k,
+                            "source_ids": [briefing_source_options[briefing_source]] if briefing_source_options[briefing_source] else None,
+                            "source_type": briefing_source_type or None,
+                            "collection_id": briefing_collection_options[briefing_collection],
+                            "tags": briefing_tags,
+                        },
+                    },
+                )
+                st.success("Scheduled briefing created.")
+                st.rerun()
+            except Exception as exc:
+                st.error(_friendly_error(exc))
     st.dataframe(api_get("/briefings"), width="stretch", hide_index=True)
+
+with tab_schedules:
+    st.header("Schedules")
+    if not schedules:
+        st.info("No schedules yet. Create one from the Sources or Briefings tab.")
+    else:
+        st.dataframe(schedules, width="stretch", hide_index=True)
+        schedule_options = {f"{item['id']} - {item['name']}": item["id"] for item in schedules}
+        selected_schedule = st.selectbox("Manage schedule", schedule_options.keys(), key="schedule_manage")
+        schedule_id = schedule_options[selected_schedule]
+        current_schedule = next(item for item in schedules if item["id"] == schedule_id)
+        c1, c2, c3, c4 = st.columns(4)
+        if c1.button("Run now", key=f"schedule_{schedule_id}_run"):
+            try:
+                result = api_post(f"/schedules/{schedule_id}/run-now")
+                st.success(result.get("summary") or result["status"])
+                st.rerun()
+            except Exception as exc:
+                st.error(_friendly_error(exc))
+        if c2.button("Pause", key=f"schedule_{schedule_id}_pause"):
+            try:
+                api_patch(f"/schedules/{schedule_id}", {"status": "paused"})
+                st.rerun()
+            except Exception as exc:
+                st.error(_friendly_error(exc))
+        if c3.button("Activate", key=f"schedule_{schedule_id}_activate"):
+            try:
+                api_patch(f"/schedules/{schedule_id}", {"status": "active"})
+                st.rerun()
+            except Exception as exc:
+                st.error(_friendly_error(exc))
+        if c4.button("Delete", key=f"schedule_{schedule_id}_delete"):
+            try:
+                api_delete(f"/schedules/{schedule_id}")
+                st.rerun()
+            except Exception as exc:
+                st.error(_friendly_error(exc))
+        with st.expander("Edit schedule"):
+            new_name = st.text_input("Name", current_schedule["name"], key=f"schedule_{schedule_id}_name")
+            new_kind = st.selectbox("Repeat", ["daily", "weekly"], index=0 if current_schedule["schedule_kind"] == "daily" else 1, key=f"schedule_{schedule_id}_kind")
+            new_time = st.text_input("Time (HH:MM)", current_schedule["time_local"], key=f"schedule_{schedule_id}_time")
+            current_day = current_schedule.get("day_of_week") if current_schedule.get("day_of_week") is not None else 0
+            new_day = st.selectbox(
+                "Day of week",
+                options=list(range(7)),
+                index=current_day,
+                format_func=lambda value: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][value],
+                key=f"schedule_{schedule_id}_day",
+            )
+            if _button("Save Schedule", key=f"schedule_{schedule_id}_save"):
+                try:
+                    api_patch(
+                        f"/schedules/{schedule_id}",
+                        {
+                            "name": new_name,
+                            "schedule_kind": new_kind,
+                            "time_local": new_time,
+                            "day_of_week": new_day if new_kind == "weekly" else None,
+                        },
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(_friendly_error(exc))
 
 with tab_runs:
     st.header("Ingestion Runs")
@@ -628,8 +789,8 @@ with tab_settings:
             placeholder="sk-...",
             help="Get one at https://platform.openai.com/api-keys",
         )
-        model_choices = ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o", "gpt-5-mini"]
-        current_model = current_settings.get("openai_model") or "gpt-4.1-mini"
+        model_choices = list(TEXT_MODEL_CHOICES)
+        current_model = current_settings.get("openai_model") or DEFAULT_TEXT_MODEL
         # Preserve a custom / unknown model name by prepending it instead of silently resetting.
         if current_model not in model_choices:
             model_choices = [current_model] + model_choices
@@ -637,7 +798,7 @@ with tab_settings:
             "Model",
             model_choices,
             index=model_choices.index(current_model),
-            help="`gpt-4.1-mini` is the recommended default — fast and inexpensive.",
+            help="`gpt-5.4-mini` is the recommended default for SourceHero — strong quality with friendlier latency and cost.",
         )
         col_save, col_clear = st.columns([1, 1])
         save_clicked = col_save.form_submit_button("💾 Save", type="primary", use_container_width=True)
@@ -677,6 +838,32 @@ with tab_settings:
                     st.error(detail or _friendly_error(exc))
                 except Exception as exc:
                     st.error(_friendly_error(exc))
+
+    st.divider()
+    st.subheader("Semantic index")
+    st.caption(
+        f"Status: {'ready' if index_status.get('ready') else 'not ready'} | "
+        f"Indexed chunks: {index_status.get('indexed_chunks', 0)} / {index_status.get('total_chunks', 0)}"
+    )
+    if not current_settings.get("openai_configured"):
+        st.info("No OpenAI key configured. SourceHero still works with local lexical retrieval only.")
+    elif st.button("Rebuild Semantic Index", key="settings_rebuild_index"):
+        with st.spinner("Rebuilding semantic index…"):
+            try:
+                result = api_post("/index/rebuild")
+                st.success(
+                    f"Index rebuild finished: {result.get('indexed_chunks', 0)} indexed, "
+                    f"{result.get('pending_chunks', 0)} pending."
+                )
+                st.rerun()
+            except requests.HTTPError as exc:
+                try:
+                    detail = exc.response.json().get("detail")
+                except Exception:
+                    detail = exc.response.text
+                st.error(detail or _friendly_error(exc))
+            except Exception as exc:
+                st.error(_friendly_error(exc))
 
     st.divider()
     st.subheader("Data directory")

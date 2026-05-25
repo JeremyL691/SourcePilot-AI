@@ -1,8 +1,9 @@
-"""v0.4.1 B3 — user_settings round-trips an unknown model name without erasing it."""
+"""v0.5.0 — user_settings keeps custom models while adopting the new default."""
 from __future__ import annotations
 
 import importlib
 import json
+from pathlib import Path
 
 import app.services.user_settings as user_settings
 
@@ -46,3 +47,15 @@ def test_clear_openai_key(monkeypatch, tmp_path):
 
     user_settings.clear_openai_key()
     assert user_settings.effective_openai_key() is None
+
+
+def test_default_model_matches_release_default(monkeypatch, tmp_path):
+    monkeypatch.setenv("SOURCEHERO_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    import app.config as config_module
+    importlib.reload(config_module)
+    importlib.reload(user_settings)
+
+    assert user_settings.effective_openai_model() == "gpt-5.4-mini"
+    readme = Path(__file__).resolve().parents[1] / "README.md"
+    assert "OPENAI_MODEL=gpt-5.4-mini" in readme.read_text(encoding="utf-8")
