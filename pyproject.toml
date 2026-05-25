@@ -1,6 +1,6 @@
 [project]
 name = "sourcehero-ai"
-version = "0.5.0"
+version = "0.6.0"
 description = "SourceHero AI — local-first, cross-platform knowledge base for cited retrieval over RSS, webpages, and PDFs."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class SourceCreate(BaseModel):
-    source_type: str = Field(pattern="^(rss|webpage|pdf|conversation)$")
+    source_type: str = Field(pattern="^(rss|webpage|pdf|conversation|clip)$")
     name: str
     url: str | None = None
     local_path: str | None = None
@@ -51,7 +51,7 @@ class SearchRequest(BaseModel):
     query: str
     top_k: int = 5
     source_ids: list[int] | None = None
-    source_type: str | None = Field(default=None, pattern="^(rss|webpage|pdf|conversation)$")
+    source_type: str | None = Field(default=None, pattern="^(rss|webpage|pdf|conversation|clip)$")
     collection_id: int | None = None
     tags: list[str] | None = None
     retrieval_mode: str = Field(default="hybrid", pattern="^(lexical|hybrid|semantic)$")
@@ -83,7 +83,7 @@ class BriefingRequest(BaseModel):
     topic: str
     top_k: int = 8
     source_ids: list[int] | None = None
-    source_type: str | None = Field(default=None, pattern="^(rss|webpage|pdf|conversation)$")
+    source_type: str | None = Field(default=None, pattern="^(rss|webpage|pdf|conversation|clip)$")
     collection_id: int | None = None
     tags: list[str] | None = None
 
@@ -237,3 +237,40 @@ class ScheduleRunRead(BaseModel):
     status: str
     summary: str | None
     error_message: str | None
+
+
+class ClipboardPreviewRead(BaseModel):
+    mode: str = Field(pattern="^(empty|url_only|text_only|url_plus_excerpt)$")
+    raw_text: str
+    source_url: str | None
+    excerpt_text: str
+    suggested_title: str
+
+
+class CaptureParseRequest(BaseModel):
+    raw_text: str
+
+
+class CaptureParseRead(ClipboardPreviewRead):
+    pass
+
+
+class CaptureCreate(BaseModel):
+    title: str | None = None
+    source_url: str | None = None
+    excerpt_text: str | None = None
+
+
+class CaptureCreateResult(BaseModel):
+    status: str
+    capture_kind: str = Field(pattern="^(url_only|text_only|url_plus_excerpt)$")
+    message: str
+    source_id: int
+    source_created: bool
+    document_id: int | None
+    document_created: bool
+    duplicate: bool
+    ingestion_run_id: int | None
+    ingestion_status: str | None
+    documents_inserted: int
+    chunks_inserted: int

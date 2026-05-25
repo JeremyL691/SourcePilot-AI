@@ -38,5 +38,8 @@ const mainJs = fs.readFileSync(path.join(root, "main.js"), "utf8");
 if (!mainJs.includes("ensurePythonEnvironment")) {
   throw new Error("Desktop main process must prepare the Python environment before launch.");
 }
+if (!mainJs.includes("Quick Capture") || !mainJs.includes("quick_capture=1")) {
+  throw new Error("Desktop menu must expose a Quick Capture entry window.");
+}
 
 console.log("Electron desktop smoke check passed.");

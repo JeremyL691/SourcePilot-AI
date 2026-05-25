@@ -104,6 +104,23 @@ def test_schedule_creation_rejects_unknown_source(db_session):
         )
 
 
+def test_schedule_creation_rejects_clip_source(db_session):
+    source = Source(source_type="clip", name="Quick captures", status="active")
+    db_session.add(source)
+    db_session.commit()
+
+    with pytest.raises(ValueError):
+        create_schedule(
+            db_session,
+            job_type="ingest_source",
+            name="Clip schedule",
+            schedule_kind="daily",
+            time_local="09:00",
+            day_of_week=None,
+            payload={"source_id": source.id},
+        )
+
+
 @pytest.fixture
 def global_db():
     Base.metadata.drop_all(bind=engine)

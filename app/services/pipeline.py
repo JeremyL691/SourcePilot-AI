@@ -16,6 +16,9 @@ from app.services.semantic_index import index_new_chunks, remove_chunk_embedding
 
 logger = logging.getLogger(__name__)
 
+INGESTABLE_SOURCE_TYPES = {"rss", "webpage", "pdf"}
+SUPPORTED_SOURCE_TYPES = INGESTABLE_SOURCE_TYPES | {"conversation", "clip"}
+
 
 class SourcePausedError(Exception):
     """Raised when ingestion is attempted on a paused source."""
@@ -77,7 +80,7 @@ def create_source(db: Session, source_type: str, name: str, url: str | None = No
         raise ValueError(f"{source_type} source requires a URL")
     if source_type == "pdf" and not local_path:
         raise ValueError("pdf source requires local_path")
-    if source_type not in {"rss", "webpage", "pdf", "conversation"}:
+    if source_type not in SUPPORTED_SOURCE_TYPES:
         raise ValueError(f"Unsupported source type: {source_type}")
     source = Source(source_type=source_type, name=name, url=url, local_path=local_path)
     db.add(source)
@@ -131,6 +134,8 @@ def ingest_source(db: Session, source_id: int) -> IngestionRun:
     source = db.get(Source, source_id)
     if not source:
         raise ValueError(f"Source not found: {source_id}")
+    if source.source_type == "clip":
+        raise ValueError("Clip sources are managed by Quick Capture and do not support ingestion.")
     if source.status == "paused":
         raise SourcePausedError(
             f"Source {source_id} ({source.name!r}) is paused. Activate it before running ingestion."

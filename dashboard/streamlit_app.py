@@ -19,8 +19,9 @@ def _humanize_path(path: str | None) -> str:
 
 
 API_BASE = os.getenv("SOURCEHERO_API_BASE", "http://127.0.0.1:8000")
-SEARCHABLE_SOURCE_TYPES = ["", "rss", "webpage", "pdf", "conversation"]
+SEARCHABLE_SOURCE_TYPES = ["", "rss", "webpage", "pdf", "conversation", "clip"]
 ADDABLE_SOURCE_TYPES = ["rss", "webpage", "pdf"]
+INGESTABLE_SOURCE_TYPES = {"rss", "webpage", "pdf"}
 _BUTTON_COUNTER = 0
 
 st.set_page_config(page_title="SourceHero AI", layout="wide")
@@ -121,6 +122,141 @@ def _safe_action(label: str, action, success: str | None = None, button_type: st
 def _init_chat_state() -> None:
     st.session_state.setdefault("chat_history", [])
     st.session_state.setdefault("conversation_markdown", "")
+    st.session_state.setdefault("capture_title", "")
+    st.session_state.setdefault("capture_source_url", "")
+    st.session_state.setdefault("capture_excerpt_text", "")
+    st.session_state.setdefault("capture_raw_input", "")
+    st.session_state.setdefault("capture_flash", None)
+
+
+def _capture_kind(source_url: str | None, excerpt_text: str | None) -> str:
+    has_url = bool((source_url or "").strip())
+    has_excerpt = bool((excerpt_text or "").strip())
+    if has_url and has_excerpt:
+        return "url_plus_excerpt"
+    if has_url:
+        return "url_only"
+    if has_excerpt:
+        return "text_only"
+    return "empty"
+
+
+def _capture_kind_label(kind: str) -> str:
+    labels = {
+        "empty": "Nothing detected yet",
+        "url_only": "Detected: URL only",
+        "text_only": "Detected: text only",
+        "url_plus_excerpt": "Detected: URL + excerpt",
+    }
+    return labels.get(kind, kind)
+
+
+def _apply_capture_preview(preview: dict) -> None:
+    st.session_state.capture_title = preview.get("suggested_title") or ""
+    st.session_state.capture_source_url = preview.get("source_url") or ""
+    st.session_state.capture_excerpt_text = preview.get("excerpt_text") or ""
+    st.session_state.capture_raw_input = preview.get("raw_text") or ""
+
+
+def _render_capture_result(result: dict | None) -> None:
+    if not result:
+        return
+    message = result.get("message") or "Capture saved."
+    if result.get("status") == "failed":
+        st.error(message)
+    elif result.get("status") == "paused":
+        st.warning(message)
+    elif result.get("duplicate"):
+        st.info(message)
+    else:
+        st.success(message)
+    if result.get("document_id"):
+        st.caption(f"Document #{result['document_id']} is now in your library.")
+    elif result.get("source_id"):
+        st.caption(f"Source #{result['source_id']} was used for this capture.")
+
+
+def _render_quick_capture_page(*, standalone: bool = False) -> None:
+    if standalone:
+        st.title("Quick Capture")
+        st.caption("Grab something from your clipboard, clean it up, and save it into SourceHero.")
+        if _button("Back to full app", key="capture_back_to_app"):
+            st.query_params.clear()
+            st.rerun()
+    else:
+        st.header("Quick Capture")
+        st.caption("The fastest way to get a URL, note, or excerpt into your library.")
+
+    _render_capture_result(st.session_state.pop("capture_flash", None))
+
+    read_col, save_col = st.columns([1, 1])
+    if read_col.button("Read Clipboard", key="capture_read_clipboard", type="primary"):
+        try:
+            preview = api_get("/capture/clipboard")
+            _apply_capture_preview(preview)
+            st.session_state.capture_flash = {
+                "status": "saved",
+                "duplicate": False,
+                "message": f"Clipboard parsed as {_capture_kind_label(preview.get('mode', 'empty')).lower()}.",
+            }
+            st.rerun()
+        except requests.HTTPError as exc:
+            try:
+                detail = exc.response.json().get("detail")
+            except Exception:
+                detail = exc.response.text
+            st.warning(detail or _friendly_error(exc))
+        except Exception as exc:
+            st.warning(_friendly_error(exc))
+
+    with st.expander("Paste raw content manually"):
+        st.text_area(
+            "Raw clipboard text",
+            key="capture_raw_input",
+            height=140,
+            placeholder="Paste a copied URL, article snippet, or rough notes here.",
+        )
+        if _button("Parse pasted content", key="capture_parse_manual"):
+            try:
+                preview = api_post("/captures/parse", {"raw_text": st.session_state.capture_raw_input})
+                _apply_capture_preview(preview)
+                st.rerun()
+            except Exception as exc:
+                st.error(_friendly_error(exc))
+
+    st.text_input("Title", key="capture_title", placeholder="Optional — we'll suggest one if you leave this blank.")
+    st.text_input("Source URL", key="capture_source_url", placeholder="https://example.com/article")
+    st.text_area("Excerpt / Notes", key="capture_excerpt_text", height=220, placeholder="Paste a quote, summary, or your own notes.")
+
+    detected_kind = _capture_kind(st.session_state.capture_source_url, st.session_state.capture_excerpt_text)
+    if detected_kind == "url_only":
+        st.info("This will create or reuse a webpage source and run ingestion.")
+    elif detected_kind == "url_plus_excerpt":
+        st.info("This will save only the excerpt as a quick capture and attach the source URL.")
+    elif detected_kind == "text_only":
+        st.info("This will save a standalone quick capture note.")
+    else:
+        st.caption("Add a URL, some text, or both.")
+    save_disabled = detected_kind == "empty"
+    if save_col.button("Save Capture", key="capture_save", disabled=save_disabled):
+        try:
+            result = api_post(
+                "/captures",
+                {
+                    "title": st.session_state.capture_title,
+                    "source_url": st.session_state.capture_source_url,
+                    "excerpt_text": st.session_state.capture_excerpt_text,
+                },
+            )
+            if result.get("status") in {"saved", "ingested"}:
+                st.session_state.capture_title = ""
+                st.session_state.capture_source_url = ""
+                st.session_state.capture_excerpt_text = ""
+                st.session_state.capture_raw_input = ""
+            st.session_state.capture_flash = result
+            st.rerun()
+        except Exception as exc:
+            st.error(_friendly_error(exc))
 
 
 def _conversation_title() -> str:
@@ -178,6 +314,11 @@ runs = api_get("/ingestion-runs")
 schedules = api_get("/schedules")
 index_status = api_get("/index/status")
 _init_chat_state()
+standalone_capture = str(st.query_params.get("quick_capture", "")).lower() in {"1", "true", "yes"}
+
+if standalone_capture:
+    _render_quick_capture_page(standalone=True)
+    st.stop()
 
 with st.sidebar:
     st.markdown("### 🦸 SourceHero")
@@ -245,8 +386,8 @@ metric_cols = st.columns(4)
 for col, key in zip(metric_cols, ["sources", "documents", "chunks", "ingestion_runs"]):
     col.metric(key.replace("_", " ").title(), stats.get(key, 0))
 
-tab_start, tab_sources, tab_ask, tab_documents, tab_briefings, tab_schedules, tab_runs, tab_advanced, tab_settings = st.tabs(
-    ["Start", "Sources", "Ask", "Documents", "Briefings", "Schedules", "Runs", "Advanced Library", "⚙️ Settings"]
+tab_start, tab_capture, tab_sources, tab_ask, tab_documents, tab_briefings, tab_schedules, tab_runs, tab_advanced, tab_settings = st.tabs(
+    ["Start", "Quick Capture", "Sources", "Ask", "Documents", "Briefings", "Schedules", "Runs", "Advanced Library", "⚙️ Settings"]
 )
 
 with tab_start:
@@ -301,7 +442,8 @@ with tab_start:
                 )
     with step_ingest:
         st.subheader("2. Index content")
-        source_options = _options(sources)
+        ingestable_sources = [source for source in sources if source["source_type"] in INGESTABLE_SOURCE_TYPES]
+        source_options = _options(ingestable_sources)
         if source_options:
             selected_source = st.selectbox("Choose source", source_options.keys(), key="start_ingest_source")
             source_id = source_options[selected_source]
@@ -345,6 +487,9 @@ with tab_start:
                 "Try another source, upload a PDF, or rerun ingestion later."
             )
             st.caption(latest["error_message"])
+
+with tab_capture:
+    _render_quick_capture_page()
 
 with tab_sources:
     st.header("Sources")
@@ -407,56 +552,62 @@ with tab_sources:
             selected = st.selectbox("Manage source", source_options.keys())
             source_id = source_options[selected]
             current = next(item for item in sources if item["id"] == source_id)
-            action_cols = st.columns(4)
-            if action_cols[0].button("Run Ingestion", key=f"source_{source_id}_run_ingestion"):
-                try:
-                    run = api_post(f"/sources/{source_id}/ingest")
-                    st.success(f"{run['status']}: +{run['chunks_inserted']} chunks, {run['duplicates_skipped']} duplicates skipped")
+            if current["source_type"] == "clip":
+                st.info("Quick captures are managed from the Quick Capture tab and do not support ingestion schedules.")
+            else:
+                action_cols = st.columns(4)
+                if action_cols[0].button("Run Ingestion", key=f"source_{source_id}_run_ingestion"):
+                    try:
+                        run = api_post(f"/sources/{source_id}/ingest")
+                        st.success(f"{run['status']}: +{run['chunks_inserted']} chunks, {run['duplicates_skipped']} duplicates skipped")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
+                if action_cols[1].button("Pause", key=f"source_{source_id}_pause"):
+                    api_patch(f"/sources/{source_id}", {"status": "paused"})
                     st.rerun()
-                except Exception as exc:
-                    st.error(str(exc))
-            if action_cols[1].button("Pause", key=f"source_{source_id}_pause"):
-                api_patch(f"/sources/{source_id}", {"status": "paused"})
-                st.rerun()
-            if action_cols[2].button("Activate", key=f"source_{source_id}_activate"):
-                api_patch(f"/sources/{source_id}", {"status": "active"})
-                st.rerun()
-            if action_cols[3].button("Delete Source", key=f"source_{source_id}_delete"):
-                api_delete(f"/sources/{source_id}")
-                st.rerun()
+                if action_cols[2].button("Activate", key=f"source_{source_id}_activate"):
+                    api_patch(f"/sources/{source_id}", {"status": "active"})
+                    st.rerun()
+                if action_cols[3].button("Delete Source", key=f"source_{source_id}_delete"):
+                    api_delete(f"/sources/{source_id}")
+                    st.rerun()
             with st.expander("Edit metadata and advanced organization"):
                 new_name = st.text_input("Name", current["name"])
                 new_url = st.text_input("URL", current.get("url") or "")
                 new_path = st.text_input("Local path", current.get("local_path") or "")
-                if _button("Save Source", key=f"source_{source_id}_save"):
+                if current["source_type"] != "clip" and _button("Save Source", key=f"source_{source_id}_save"):
                     api_patch(f"/sources/{source_id}", {"name": new_name, "url": new_url, "local_path": new_path})
                     st.rerun()
-                st.markdown("#### Auto ingestion")
-                schedule_kind = st.selectbox("Repeat", ["daily", "weekly"], key=f"source_{source_id}_schedule_kind")
-                time_local = st.text_input("Time (HH:MM)", value="09:00", key=f"source_{source_id}_schedule_time")
-                day_of_week = st.selectbox(
-                    "Day of week",
-                    options=list(range(7)),
-                    format_func=lambda value: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][value],
-                    key=f"source_{source_id}_schedule_day",
-                )
-                if _button("Create Auto Ingest", key=f"source_{source_id}_schedule_create"):
-                    try:
-                        api_post(
-                            "/schedules",
-                            {
-                                "job_type": "ingest_source",
-                                "name": f"Auto ingest: {current['name']}",
-                                "schedule_kind": schedule_kind,
-                                "time_local": time_local,
-                                "day_of_week": day_of_week if schedule_kind == "weekly" else None,
-                                "payload": {"source_id": source_id},
-                            },
-                        )
-                        st.success("Schedule created.")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(_friendly_error(exc))
+                elif current["source_type"] == "clip":
+                    st.caption("This system source is read-only here. Save new items from the Quick Capture tab.")
+                if current["source_type"] in INGESTABLE_SOURCE_TYPES:
+                    st.markdown("#### Auto ingestion")
+                    schedule_kind = st.selectbox("Repeat", ["daily", "weekly"], key=f"source_{source_id}_schedule_kind")
+                    time_local = st.text_input("Time (HH:MM)", value="09:00", key=f"source_{source_id}_schedule_time")
+                    day_of_week = st.selectbox(
+                        "Day of week",
+                        options=list(range(7)),
+                        format_func=lambda value: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][value],
+                        key=f"source_{source_id}_schedule_day",
+                    )
+                    if _button("Create Auto Ingest", key=f"source_{source_id}_schedule_create"):
+                        try:
+                            api_post(
+                                "/schedules",
+                                {
+                                    "job_type": "ingest_source",
+                                    "name": f"Auto ingest: {current['name']}",
+                                    "schedule_kind": schedule_kind,
+                                    "time_local": time_local,
+                                    "day_of_week": day_of_week if schedule_kind == "weekly" else None,
+                                    "payload": {"source_id": source_id},
+                                },
+                            )
+                            st.success("Schedule created.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(_friendly_error(exc))
                 if collections:
                     selected_collection = st.selectbox("Add source to collection", _options(collections).keys())
                     if _button("Attach Source To Collection", key=f"source_{source_id}_attach_collection"):

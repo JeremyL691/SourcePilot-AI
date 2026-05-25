@@ -20,6 +20,7 @@ const children = [];
 let resolvedPython = null;
 let mainWindow = null;
 let splashWindow = null;
+let captureWindow = null;
 
 function platformKey() {
   if (process.platform === "win32") return "win";
@@ -278,6 +279,12 @@ function buildMenu() {
       label: "File",
       submenu: [
         {
+          label: "Quick Capture",
+          accelerator: "CmdOrCtrl+Shift+V",
+          click: () => openQuickCaptureWindow()
+        },
+        { type: "separator" },
+        {
           label: "Open Data Folder",
           click: () => shell.openPath(dataDir())
         },
@@ -313,6 +320,25 @@ function createMainWindow() {
     if (splashWindow) { splashWindow.close(); splashWindow = null; }
     mainWindow.show();
   });
+}
+
+function openQuickCaptureWindow() {
+  if (captureWindow && !captureWindow.isDestroyed()) {
+    captureWindow.focus();
+    return;
+  }
+  captureWindow = new BrowserWindow({
+    width: 720,
+    height: 760,
+    minWidth: 640,
+    minHeight: 680,
+    title: "Quick Capture",
+    webPreferences: { contextIsolation: true, nodeIntegration: false }
+  });
+  captureWindow.on("closed", () => {
+    captureWindow = null;
+  });
+  captureWindow.loadURL(`${dashboardUrl}?quick_capture=1`);
 }
 
 function stopChildren() {
@@ -352,4 +378,4 @@ app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
 });
 
-module.exports = { pythonExecutable, waitForHttp, apiUrl, dashboardUrl, dataDir };
+module.exports = { pythonExecutable, waitForHttp, apiUrl, dashboardUrl, dataDir, openQuickCaptureWindow };

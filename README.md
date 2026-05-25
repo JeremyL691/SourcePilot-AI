@@ -4,15 +4,13 @@ SourceHero AI is a local-first knowledge base for people like me who save too ma
 
 I did not build this to be another general chatbot. The point is much more practical: keep a reading pile on your own machine, turn it into something searchable, and get answers that stay tied to the sources you actually saved.
 
-Everything runs locally. Your library lives in SQLite on your computer. Webpages, RSS feeds, PDFs, and saved conversations all end up in the same place. If you add an OpenAI key, SourceHero can produce cleaner synthesized answers and optional semantic search. If you do not, the app still works with local lexical retrieval and citations.
-
-> Earlier versions were released as **SourcePilot AI**. The project was renamed to **SourceHero AI** in v0.4.
+Everything runs locally. Your library lives in SQLite on your computer. Webpages, RSS feeds, PDFs, saved conversations, and quick captured notes all end up in the same place. If you add an OpenAI key, SourceHero can produce cleaner synthesized answers and optional semantic search. If you do not, the app still works with local lexical retrieval and citations.
 
 ## What It Feels Like To Use
 
 The basic loop is simple:
 
-1. Add a webpage, RSS feed, or PDF.
+1. Add a webpage, RSS feed, PDF, or quick capture.
 2. Run ingestion so SourceHero cleans, chunks, and indexes the content.
 3. Ask a question later and get an answer grounded in the indexed evidence.
 4. Save useful conversations back into the library so they become searchable too.
@@ -22,6 +20,7 @@ Over time, the library becomes less like a folder of stuff you meant to read and
 ## What It Can Do Right Now
 
 - Ingest webpages, RSS feeds, PDFs, and saved conversations
+- Save quick captures from the clipboard as standalone notes or URL-backed excerpts
 - Store everything locally in SQLite
 - Organize sources and documents with collections and tags
 - Search with filters for source, type, collection, and tags
@@ -44,19 +43,20 @@ The current release includes:
 - SQLite / SQLAlchemy data model
 - Hybrid retrieval with local lexical search and optional semantic embeddings
 - In-app schedules for recurring ingestion and briefings
+- Quick Capture for clipboard-first note and URL saving
 - Conversation saving
 - Demo seeding for first-run onboarding
 - Human-readable ingestion errors for common failures
 
-## What Changed In v0.5
+## What Changed In v0.6
 
-`v0.5.0` is the first version that really starts to feel like a knowledge workspace instead of a demo.
+`v0.6.0` is the first version where getting things into the library feels as important as searching them later.
 
-- Search now supports hybrid retrieval, so keyword matches can be combined with a local semantic index when embeddings are available.
-- The semantic index can be inspected and rebuilt from inside the app.
-- Briefings can be filtered the same way search can.
-- You can create recurring ingestion jobs and recurring briefings without leaving the desktop app.
-- The OpenAI model picker now uses current real model IDs instead of placeholder names.
+- There is now a proper Quick Capture flow for clipboard-first saving.
+- A copied URL can become a webpage source and immediately run ingestion.
+- A copied excerpt or note can be saved as a searchable `clip` document without scraping the whole page.
+- The desktop menu now has a Quick Capture entry, so saving a note takes fewer steps.
+- Clip documents show up in search, documents, and briefings alongside the rest of the library.
 
 More detail lives in [CHANGELOG.md](/Users/jeremyliu/Desktop/Projects/SourceHero-AI/CHANGELOG.md).
 
@@ -217,6 +217,9 @@ These are the endpoints most people end up touching first:
 | `POST` | `/index/rebuild` | Rebuild embeddings for the current chunk corpus |
 | `POST` | `/sources` | Add a source |
 | `POST` | `/sources/{source_id}/ingest` | Run ingestion |
+| `GET` | `/capture/clipboard` | Read and classify clipboard text |
+| `POST` | `/captures/parse` | Parse pasted raw capture text |
+| `POST` | `/captures` | Save a quick capture or URL |
 | `POST` | `/search` | Search / ask with citations |
 | `POST` | `/briefings` | Generate a cited briefing |
 | `GET` | `/schedules` | List recurring jobs |

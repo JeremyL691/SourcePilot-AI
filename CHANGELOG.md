@@ -1,5 +1,45 @@
 # Changelog
 
+## v0.6.0 — 2026-05-25
+
+Feature release focused on getting things into the library faster, especially
+from the desktop clipboard.
+
+### Added
+
+- **Quick Capture flow.** New clipboard-first capture APIs:
+  `GET /capture/clipboard`, `POST /captures/parse`, and `POST /captures`.
+- **Clip documents.** Source type `clip` can now store saved excerpts and
+  standalone notes in a system-managed `Quick captures` source.
+- **Desktop Quick Capture entry.** The Electron menu can now open a dedicated
+  Quick Capture window directly from the desktop shell.
+
+### Changed
+
+- **Source filters now understand clips.** Search, documents, and briefings
+  can include or target `clip` content the same way they already handle RSS,
+  webpages, PDFs, and conversations.
+- **Quick Capture UI.** The Streamlit app now has a dedicated Quick Capture
+  page with clipboard read, manual parse fallback, editable title/URL/text
+  fields, and save feedback.
+
+### Fixed
+
+- **URL-only capture respects paused sources.** If a matching webpage source
+  already exists but is paused, quick capture does not silently reactivate it.
+- **URL dedupe is normalized.** Quick capture compares normalized `http/https`
+  URLs so small formatting differences do not create duplicate webpage sources.
+- **Clip sources cannot be scheduled for ingestion.** Auto-ingest is now
+  limited to source types that actually support ingestion.
+
+### Tests
+
+- Added coverage for clipboard parsing, clip creation and searchability,
+  duplicate clip saves, URL-only capture reuse, paused-source capture
+  behavior, and clip schedule rejection.
+
+---
+
 ## v0.5.0 — 2026-05-25
 
 Feature release focused on retrieval quality, recurring automation, and a

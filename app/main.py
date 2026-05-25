@@ -16,7 +16,12 @@ from app.retrieval.search import retrieve_documents
 from app.schemas import (
     BriefingRead,
     BriefingRequest,
+    CaptureCreate,
+    CaptureCreateResult,
+    CaptureParseRead,
+    CaptureParseRequest,
     ChunkRead,
+    ClipboardPreviewRead,
     CollectionCreate,
     CollectionRead,
     CollectionUpdate,
@@ -41,6 +46,7 @@ from app.schemas import (
     TagUpdate,
 )
 from app.services.briefing import generate_briefing
+from app.services.captures import create_capture, parse_capture_text, preview_clipboard
 from app.services.citations import answer_with_citations, citation_label
 from app.services.conversations import save_conversation_markdown
 from app.services.demo import seed_demo_data
@@ -93,7 +99,7 @@ async def lifespan(app: FastAPI):
             await poller_task
 
 
-app = FastAPI(title="SourceHero AI", version="0.5.0", lifespan=lifespan)
+app = FastAPI(title="SourceHero AI", version="0.6.0", lifespan=lifespan)
 
 @app.get("/")
 def root() -> dict:
@@ -282,7 +288,8 @@ def run_ingestion(source_id: int, db: Session = Depends(get_db)):
     except SourcePausedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @app.get("/ingestion-runs", response_model=list[IngestionRunRead])
@@ -364,6 +371,39 @@ def search(payload: SearchRequest, db: Session = Depends(get_db)):
 def save_conversation(payload: ConversationSaveRequest, db: Session = Depends(get_db)):
     try:
         return save_conversation_markdown(db, payload.title, payload.markdown)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/capture/clipboard", response_model=ClipboardPreviewRead)
+def capture_clipboard():
+    try:
+        preview = preview_clipboard()
+        return preview.__dict__
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/captures/parse", response_model=CaptureParseRead)
+def parse_capture(payload: CaptureParseRequest):
+    try:
+        preview = parse_capture_text(payload.raw_text)
+        return preview.__dict__
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/captures", response_model=CaptureCreateResult)
+def save_capture(payload: CaptureCreate, db: Session = Depends(get_db)):
+    try:
+        return create_capture(
+            db,
+            title=payload.title,
+            source_url=payload.source_url,
+            excerpt_text=payload.excerpt_text,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

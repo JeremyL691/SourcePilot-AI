@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models import ScheduledJob, ScheduledJobRun, Source
 from app.services.briefing import generate_briefing
-from app.services.pipeline import SourcePausedError, ingest_source
+from app.services.pipeline import INGESTABLE_SOURCE_TYPES, SourcePausedError, ingest_source
 
 logger = logging.getLogger(__name__)
 
@@ -253,8 +253,11 @@ def _validate_payload(db: Session, job_type: str, payload: dict) -> None:
         source_id = payload.get("source_id")
         if not isinstance(source_id, int):
             raise ValueError("ingest_source schedules require integer payload.source_id")
-        if not db.get(Source, source_id):
+        source = db.get(Source, source_id)
+        if not source:
             raise ValueError(f"Source not found: {source_id}")
+        if source.source_type not in INGESTABLE_SOURCE_TYPES:
+            raise ValueError("Only rss, webpage, and pdf sources can be scheduled for ingestion.")
         return
     topic = str(payload.get("topic") or "").strip()
     if not topic:
