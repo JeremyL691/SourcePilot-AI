@@ -24,9 +24,174 @@ ADDABLE_SOURCE_TYPES = ["rss", "webpage", "pdf"]
 INGESTABLE_SOURCE_TYPES = {"rss", "webpage", "pdf"}
 _BUTTON_COUNTER = 0
 
-st.set_page_config(page_title="SourceHero AI", layout="wide")
-st.title("SourceHero AI")
-st.caption("A local personal knowledge base that answers from your own sources.")
+st.set_page_config(page_title="SourceHero AI", layout="wide", initial_sidebar_state="expanded")
+st.markdown(
+    """
+    <style>
+    :root {
+        --sourcehero-ink: #152033;
+        --sourcehero-muted: #5b6678;
+        --sourcehero-border: #d9e0e8;
+        --sourcehero-panel: #f7f9fc;
+        --sourcehero-blue: #2563eb;
+        --sourcehero-green: #0f766e;
+        --sourcehero-amber: #b45309;
+    }
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+        max-width: 1280px;
+    }
+    [data-testid="stAppViewContainer"] {
+        background: #fbfcfe;
+        color: var(--sourcehero-ink);
+    }
+    section[data-testid="stSidebar"] {
+        background: #f3f6fa;
+        border-right: 1px solid var(--sourcehero-border);
+    }
+    div[data-testid="stMetric"] {
+        background: #ffffff;
+        border: 1px solid var(--sourcehero-border);
+        border-radius: 8px;
+        padding: 0.85rem 1rem;
+        min-height: 88px;
+        box-shadow: 0 1px 2px rgba(21, 32, 51, 0.04);
+    }
+    div[data-testid="stMetric"] label {
+        color: var(--sourcehero-muted);
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.35rem;
+        border-bottom: 1px solid var(--sourcehero-border);
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 6px 6px 0 0;
+        padding: 0.55rem 0.8rem;
+    }
+    div.stButton > button {
+        border: 1px solid var(--sourcehero-border) !important;
+        border-radius: 7px !important;
+        background: #ffffff !important;
+        color: var(--sourcehero-ink) !important;
+        font-weight: 650 !important;
+    }
+    div.stButton > button:hover {
+        border-color: var(--sourcehero-blue) !important;
+        color: var(--sourcehero-blue) !important;
+    }
+    div.stButton > button[kind="primary"] {
+        background: var(--sourcehero-blue) !important;
+        border-color: var(--sourcehero-blue) !important;
+        color: #ffffff !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background: #1d4ed8 !important;
+        border-color: #1d4ed8 !important;
+        color: #ffffff !important;
+    }
+    .portfolio-hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+        gap: 1.25rem;
+        align-items: stretch;
+        padding: 1.35rem 0 1.4rem;
+        border-top: 1px solid var(--sourcehero-border);
+        border-bottom: 1px solid var(--sourcehero-border);
+        margin-bottom: 1rem;
+    }
+    .hero-copy h1 {
+        margin: 0.35rem 0 0.8rem;
+        font-size: 2.25rem;
+        line-height: 1.08;
+        letter-spacing: 0;
+        color: var(--sourcehero-ink);
+    }
+    .hero-copy p {
+        margin: 0;
+        max-width: 680px;
+        color: var(--sourcehero-muted);
+        font-size: 1rem;
+        line-height: 1.6;
+    }
+    .eyebrow {
+        color: var(--sourcehero-green);
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0;
+    }
+    .proof-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+    .proof-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 0.25rem 0.62rem;
+        border: 1px solid var(--sourcehero-border);
+        border-radius: 6px;
+        background: #ffffff;
+        color: #2f3b4d;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+    .answer-preview {
+        background: #ffffff;
+        border: 1px solid var(--sourcehero-border);
+        border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 8px 24px rgba(21, 32, 51, 0.06);
+    }
+    .answer-preview .label {
+        color: var(--sourcehero-muted);
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0;
+        margin-bottom: 0.5rem;
+    }
+    .answer-preview .question {
+        font-weight: 700;
+        color: var(--sourcehero-ink);
+        margin-bottom: 0.65rem;
+    }
+    .answer-preview .answer {
+        color: #334155;
+        line-height: 1.55;
+        margin-bottom: 0.75rem;
+    }
+    .citation-list {
+        display: grid;
+        gap: 0.4rem;
+    }
+    .citation {
+        border-left: 3px solid var(--sourcehero-blue);
+        background: var(--sourcehero-panel);
+        padding: 0.48rem 0.6rem;
+        color: #334155;
+        font-size: 0.86rem;
+    }
+    .section-kicker {
+        color: var(--sourcehero-muted);
+        margin-top: -0.25rem;
+        margin-bottom: 1rem;
+    }
+    @media (max-width: 900px) {
+        .portfolio-hero {
+            grid-template-columns: 1fr;
+        }
+        .hero-copy h1 {
+            font-size: 1.8rem;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 def api_get(path: str, params: dict | None = None):
@@ -299,6 +464,50 @@ def _build_conversation_markdown() -> str:
     return "\n".join(lines).strip()
 
 
+def _render_home_hero(stats: dict, index_status: dict, health: dict) -> None:
+    semantic_label = "Semantic ready" if index_status.get("ready") else "Lexical ready"
+    openai_label = "OpenAI connected" if health.get("openai_configured") else "OpenAI optional"
+    st.markdown(
+        f"""
+        <div class="portfolio-hero">
+            <div class="hero-copy">
+                <div class="eyebrow">Local-first AI knowledge base</div>
+                <h1>Turn saved research into cited answers.</h1>
+                <p>
+                    SourceHero keeps webpages, PDFs, RSS feeds, notes, and saved conversations on your own machine,
+                    then helps you search and ask questions against the evidence you collected.
+                </p>
+                <div class="proof-row">
+                    <span class="proof-pill">FastAPI backend</span>
+                    <span class="proof-pill">Streamlit dashboard</span>
+                    <span class="proof-pill">Electron desktop shell</span>
+                    <span class="proof-pill">SQLite local storage</span>
+                    <span class="proof-pill">{semantic_label}</span>
+                    <span class="proof-pill">{openai_label}</span>
+                </div>
+            </div>
+            <div class="answer-preview">
+                <div class="label">Answer preview</div>
+                <div class="question">What do my saved sources say about retrieval evaluation?</div>
+                <div class="answer">
+                    SourceHero answers from indexed chunks, keeps the retrieved evidence visible,
+                    and cites the source records instead of returning unsupported prose.
+                </div>
+                <div class="citation-list">
+                    <div class="citation">[1] Saved article chunk with source metadata</div>
+                    <div class="citation">[2] PDF excerpt from the local library</div>
+                    <div class="citation">[3] Conversation summary saved back into search</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    hero_metrics = st.columns(4)
+    for col, key in zip(hero_metrics, ["sources", "documents", "chunks", "ingestion_runs"]):
+        col.metric(key.replace("_", " ").title(), stats.get(key, 0))
+
+
 try:
     health = api_get("/health")
     stats = health["stats"]
@@ -321,7 +530,7 @@ if standalone_capture:
     st.stop()
 
 with st.sidebar:
-    st.markdown("### 🦸 SourceHero")
+    st.markdown("### SourceHero")
     st.caption("Local-first personal knowledge base")
     st.divider()
     st.metric("Sources", stats.get("sources", 0))
@@ -338,24 +547,24 @@ with st.sidebar:
     if health.get("openai_configured"):
         preview = health.get("openai_key_preview") or "set"
         source_label = "env" if health.get("openai_key_source") == "env" else "in-app"
-        st.success(f"✅ OpenAI key configured ({preview}, from {source_label})")
+        st.success(f"OpenAI key configured ({preview}, from {source_label})")
     else:
-        st.info("💡 Add an OpenAI API key in the **Settings** tab for nicer synthesized answers.")
+        st.info("Add an OpenAI API key in the Settings tab for synthesized answers and semantic search.")
 
 # First-run welcome: takes over when knowledge base is brand new and user hasn't dismissed.
 if stats["sources"] == 0 and not st.session_state.get("welcome_dismissed"):
-    st.markdown("## 👋 Welcome to SourceHero AI")
+    st.markdown("## Welcome to SourceHero AI")
     st.markdown(
         "Looks like this is your first time. Three steps to get going:\n\n"
-        "1. **Try the demo** (recommended) — one click loads example sources\n"
-        "2. **Add your own source** — paste an RSS / webpage URL or upload a PDF\n"
-        "3. **Ask questions** — head to the *Ask* tab and ask anything"
+        "1. **Try the demo** (recommended) - one click loads example sources\n"
+        "2. **Add your own source** - paste an RSS / webpage URL or upload a PDF\n"
+        "3. **Ask questions** - head to the *Ask* tab and ask anything"
     )
     welcome_cols = st.columns([1, 1, 1])
     with welcome_cols[0]:
-        if st.button("🚀 Try the demo (recommended)", type="primary", use_container_width=True, key="welcome_demo"):
+        if st.button("Try the demo (recommended)", type="primary", use_container_width=True, key="welcome_demo"):
             try:
-                with st.spinner("Loading demo content and indexing… (this can take 20–60s)"):
+                with st.spinner("Loading demo content and indexing... (this can take 20-60s)"):
                     result = api_post("/demo/seed-and-ingest")
                 ok_count = sum(1 for r in result.get("ingestion", []) if r["status"] == "success")
                 total = len(result.get("ingestion", []))
@@ -372,7 +581,7 @@ if stats["sources"] == 0 and not st.session_state.get("welcome_dismissed"):
             except Exception as exc:
                 st.error(f"Could not load demo: {_friendly_error(exc)}")
     with welcome_cols[1]:
-        if st.button("➕ Add my own source", use_container_width=True, key="welcome_add"):
+        if st.button("Add my own source", use_container_width=True, key="welcome_add"):
             st.session_state["welcome_dismissed"] = True
             st.session_state["scroll_to_add_source"] = True
             st.rerun()
@@ -382,18 +591,14 @@ if stats["sources"] == 0 and not st.session_state.get("welcome_dismissed"):
             st.rerun()
     st.divider()
 
-metric_cols = st.columns(4)
-for col, key in zip(metric_cols, ["sources", "documents", "chunks", "ingestion_runs"]):
-    col.metric(key.replace("_", " ").title(), stats.get(key, 0))
-
 tab_start, tab_capture, tab_sources, tab_ask, tab_documents, tab_briefings, tab_schedules, tab_runs, tab_advanced, tab_settings = st.tabs(
-    ["Start", "Quick Capture", "Sources", "Ask", "Documents", "Briefings", "Schedules", "Runs", "Advanced Library", "⚙️ Settings"]
+    ["Home", "Capture", "Sources", "Ask", "Documents", "Briefings", "Schedules", "Runs", "Library", "Settings"]
 )
 
 with tab_start:
-    st.header("Start in three steps")
+    _render_home_hero(stats, index_status, health)
     if st.session_state.pop("scroll_to_add_source", False):
-        st.info("👇 Add your first source under **Step 1** below.")
+        st.info("Add your first source under Capture below.")
     if stats["sources"] == 0:
         st.info("Your knowledge base is empty. Load demo sources or add your own first source.")
         start_cols = st.columns(2)
@@ -412,9 +617,11 @@ with tab_start:
     else:
         st.success("Your knowledge base is ready. Ask a question below or continue adding sources.")
 
+    st.subheader("Working Loop")
+    st.markdown('<p class="section-kicker">Capture material, index it locally, then ask questions with citations.</p>', unsafe_allow_html=True)
     step_add, step_ingest, step_ask = st.columns(3)
     with step_add:
-        st.subheader("1. Add source")
+        st.subheader("1. Capture")
         source_type = st.selectbox("Source type", ["webpage", "rss", "pdf"], key="start_source_type")
         source_name = st.text_input("Name", key="start_source_name")
         if source_type in {"webpage", "rss"}:
@@ -441,7 +648,7 @@ with tab_start:
                     key="start_upload_pdf",
                 )
     with step_ingest:
-        st.subheader("2. Index content")
+        st.subheader("2. Index")
         ingestable_sources = [source for source in sources if source["source_type"] in INGESTABLE_SOURCE_TYPES]
         source_options = _options(ingestable_sources)
         if source_options:

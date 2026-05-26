@@ -233,8 +233,8 @@ async function startServices() {
 
 function createSplash() {
   splashWindow = new BrowserWindow({
-    width: 480,
-    height: 280,
+    width: 560,
+    height: 340,
     frame: false,
     resizable: false,
     alwaysOnTop: true,
@@ -244,18 +244,37 @@ function createSplash() {
   });
   const splashHtml = `
     <!doctype html><html><head><meta charset="utf-8"><style>
+      :root{--ink:#152033;--muted:#5b6678;--line:#d9e0e8;--blue:#2563eb;--green:#0f766e;}
+      *{box-sizing:border-box}
       body{margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;
-           background:linear-gradient(135deg,#1e3a8a 0%,#7c3aed 100%);color:#fff;
-           display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;}
-      h1{margin:0 0 8px;font-size:32px;letter-spacing:1px;}
-      p{margin:0;opacity:0.85;font-size:14px;}
-      .spin{margin-top:24px;width:32px;height:32px;border:3px solid rgba(255,255,255,0.3);
-            border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;}
+           background:#f6f8fb;color:var(--ink);height:100vh;display:grid;place-items:center;}
+      .shell{width:100%;height:100%;padding:34px 38px;display:flex;flex-direction:column;justify-content:space-between;
+             border:1px solid var(--line);background:#fbfcfe;}
+      .eyebrow{color:var(--green);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0;}
+      h1{margin:8px 0 10px;font-size:34px;line-height:1.05;letter-spacing:0;}
+      p{margin:0;max-width:420px;color:var(--muted);font-size:15px;line-height:1.5;}
+      .status{display:grid;gap:8px;margin-top:22px;}
+      .row{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);
+           border-radius:8px;background:#fff;padding:9px 12px;color:#334155;font-size:13px;}
+      .dot{width:8px;height:8px;border-radius:50%;background:var(--blue);display:inline-block;margin-right:8px;}
+      .spin{width:18px;height:18px;border:2px solid #c8d2df;border-top-color:var(--blue);
+            border-radius:50%;animation:spin 1s linear infinite;}
+      .foot{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:12px;}
       @keyframes spin{to{transform:rotate(360deg)}}
     </style></head><body>
-      <h1>SourceHero AI</h1>
-      <p>Starting up…</p>
-      <div class="spin"></div>
+      <main class="shell">
+        <section>
+          <div class="eyebrow">Local-first research memory</div>
+          <h1>SourceHero AI</h1>
+          <p>Starting the private knowledge base, cited search, and desktop capture workflow.</p>
+          <div class="status">
+            <div class="row"><span><span class="dot"></span>FastAPI backend</span><span>starting</span></div>
+            <div class="row"><span><span class="dot"></span>Streamlit dashboard</span><span>starting</span></div>
+            <div class="row"><span><span class="dot"></span>Local data folder</span><span>ready</span></div>
+          </div>
+        </section>
+        <div class="foot"><span>Private by default</span><div class="spin"></div></div>
+      </main>
     </body></html>`;
   splashWindow.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(splashHtml));
 }
